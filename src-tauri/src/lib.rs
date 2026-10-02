@@ -21,7 +21,8 @@ pub const NOTCH_LABEL: &str = "notch";
 
 pub struct AppState {
     pub sessions: Mutex<SessionStore>,
-    pub config: Config,
+    pub config: Mutex<Config>,
+    pub config_dir: PathBuf,
     pub token: String,
     pub claude_settings: PathBuf,
     pub server_error: Option<String>,
@@ -34,6 +35,7 @@ pub struct AppState {
 pub struct Status {
     server_error: Option<String>,
     hooks_installed: bool,
+    sound_enabled: bool,
 }
 
 #[tauri::command]
@@ -54,10 +56,29 @@ fn acknowledge(app: AppHandle, state: tauri::State<AppState>) {
     }
 }
 
+/// The front decides the visible notch shape (compact / expanded, DF-0003).
+#[tauri::command]
+fn set_hit_area(window: tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
+    notch::set_hit_area(&window, width, height).map_err(|e| e.to_string())
+}
+
+/// Turns the notification sound on or off and remembers the choice.
+pub fn set_sound_enabled(app: &AppHandle, enabled: bool) {
+    let state = app.state::<AppState>();
+    let mut config = state.config.lock().unwrap();
+    config.sound_enabled = enabled;
+    if let Err(e) = config::save(&state.config_dir, &config) {
+        log::error!("cannot save config: {e}");
+    }
+    drop(config);
+    emit_status(app);
+}
+
 fn status(state: &AppState) -> Status {
     Status {
         server_error: state.server_error.clone(),
         hooks_installed: claude_settings::is_installed(&state.claude_settings),
+        sound_enabled: state.config.lock().unwrap().sound_enabled,
     }
 }
 
@@ -76,7 +97,7 @@ pub fn connect_claude_code(app: &AppHandle, connect: bool) {
     let result = if connect {
         claude_settings::install(
             &state.claude_settings,
-            state.config.server_port,
+            state.config.lock().unwrap().server_port,
             &state.token,
         )
     } else {
@@ -105,7 +126,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_sessions,
             get_status,
-            acknowledge
+            acknowledge,
+            set_hit_area
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -130,7 +152,8 @@ pub fn run() {
             let timeout = Duration::from_secs(config.session_timeout_minutes * 60);
             app.manage(AppState {
                 sessions: Mutex::new(SessionStore::default()),
-                config,
+                config: Mutex::new(config),
+                config_dir,
                 token,
                 claude_settings,
                 server_error,
@@ -142,6 +165,7 @@ pub fn run() {
                 .get_webview_window(NOTCH_LABEL)
                 .expect("notch window is declared in tauri.conf.json");
             notch::place_on_primary_monitor(&window)?;
+            notch::apply_hit_area(&window)?;
             notch::show(&window)?;
             notch::spawn_watcher(app.handle().clone());
 
@@ -162,7 +186,9 @@ pub fn run() {
             ) && let Some(w) = window.app_handle().get_webview_window(NOTCH_LABEL)
             {
                 std::thread::spawn(move || {
-                    if let Err(e) = notch::place_on_primary_monitor(&w) {
+                    if let Err(e) =
+                        notch::place_on_primary_monitor(&w).and_then(|_| notch::apply_hit_area(&w))
+                    {
                         log::warn!("failed to reposition notch: {e}");
                     }
                 });

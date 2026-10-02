@@ -3,7 +3,8 @@ use std::mem::{size_of, zeroed};
 use tauri::WebviewWindow;
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::Graphics::Gdi::{
-    GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromWindow,
+    CreateRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromWindow,
+    SetWindowRgn,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
@@ -68,4 +69,23 @@ unsafe fn is_desktop(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
     let len = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32) };
     let class = String::from_utf16_lossy(&class[..len.max(0) as usize]);
     matches!(class.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd")
+}
+
+/// Limits the window to the visible notch shape: outside this rectangle the
+/// window neither paints nor receives clicks, which go to the app below.
+/// Changing the region instead of resizing the window avoids the WebView2
+/// repaint flash a resize causes. Coordinates are physical, window-relative.
+pub fn set_hit_area(window: &WebviewWindow, width: f64, height: f64) -> tauri::Result<()> {
+    let hwnd = window.hwnd()?.0;
+    let scale = window.scale_factor()?;
+    let window_width = window.inner_size()?.width as i32;
+    let width = (width * scale).round() as i32;
+    let height = (height * scale).round() as i32;
+    let left = (window_width - width) / 2;
+    unsafe {
+        // The system owns the region once it is set: no DeleteObject.
+        let region = CreateRectRgn(left, 0, left + width, height);
+        SetWindowRgn(hwnd, region, 1);
+    }
+    Ok(())
 }

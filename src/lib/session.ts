@@ -1,3 +1,5 @@
+import type { SoundKind } from './sound'
+
 // Session states, see docs/fonctionnel/DF-0001-etats-du-notch.md
 export type SessionState =
   | 'idle'
@@ -20,6 +22,7 @@ export interface Session {
 export interface Status {
   serverError: string | null
   hooksInstalled: boolean
+  soundEnabled: boolean
 }
 
 export const stateLabels: Record<SessionState, string> = {
@@ -58,4 +61,25 @@ export function projectName(session: Session): string {
 export function describe(session: Session): string {
   const tool = session.tool ? ` (${session.tool})` : ''
   return `${projectName(session)} : ${stateLabels[session.state]}${tool}`
+}
+
+// States that deserve attention: they expand the notch and play a sound (DF-0003).
+export function soundFor(state: SessionState): SoundKind | undefined {
+  switch (state) {
+    case 'needs_permission':
+    case 'waiting_input':
+      return 'attention'
+    case 'done':
+      return 'done'
+    case 'error':
+      return 'error'
+    default:
+      return undefined
+  }
+}
+
+// Sessions that just entered an attention state, compared to the previous list.
+export function newAlerts(previous: Session[], next: Session[]): Session[] {
+  const before = new Map(previous.map((s) => [s.id, s.state]))
+  return next.filter((s) => soundFor(s.state) && before.get(s.id) !== s.state)
 }

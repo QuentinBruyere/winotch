@@ -5,7 +5,7 @@ use tauri::{
 };
 use tauri_plugin_autostart::ManagerExt;
 
-use crate::NOTCH_LABEL;
+use crate::{AppState, NOTCH_LABEL};
 
 pub fn create(app: &AppHandle) -> tauri::Result<()> {
     let toggle = MenuItem::with_id(
@@ -32,6 +32,15 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         autostart_enabled,
         None::<&str>,
     )?;
+    let sound_enabled = app.state::<AppState>().config.lock().unwrap().sound_enabled;
+    let sound = CheckMenuItem::with_id(
+        app,
+        "sound",
+        "Son des notifications",
+        true,
+        sound_enabled,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quitter winotch", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -41,6 +50,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &connect,
             &disconnect,
             &PredefinedMenuItem::separator(app)?,
+            &sound,
             &autostart,
             &quit,
         ],
@@ -77,6 +87,11 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 }
                 // Reflect the real state, whatever happened.
                 let _ = autostart.set_checked(launcher.is_enabled().unwrap_or(false));
+            }
+            "sound" => {
+                let enabled = !app.state::<AppState>().config.lock().unwrap().sound_enabled;
+                crate::set_sound_enabled(app, enabled);
+                let _ = sound.set_checked(enabled);
             }
             "quit" => app.exit(0),
             _ => {}

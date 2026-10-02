@@ -1,9 +1,26 @@
+use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 
 use crate::{AppState, NOTCH_LABEL, platform};
+
+/// Visible notch shape in logical pixels, chosen by the front (DF-0003).
+/// Starts compact; must match `COMPACT` in src/App.svelte.
+static HIT_AREA: Mutex<(f64, f64)> = Mutex::new((300.0, 36.0));
+
+/// Records the visible shape and restricts the window to it.
+pub fn set_hit_area(window: &WebviewWindow, width: f64, height: f64) -> tauri::Result<()> {
+    *HIT_AREA.lock().unwrap() = (width, height);
+    apply_hit_area(window)
+}
+
+/// Re-applies the last shape, e.g. after a DPI change.
+pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
+    let (width, height) = *HIT_AREA.lock().unwrap();
+    platform::set_hit_area(window, width, height)
+}
 
 /// Centers the notch horizontally at the very top of the primary monitor.
 /// Works in physical pixels so it stays correct at any DPI scaling.

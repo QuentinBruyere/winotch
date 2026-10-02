@@ -14,8 +14,8 @@
       {
         "label": "notch",
         "title": "winotch",
-        "width": 300,
-        "height": 36,
+        "width": 380,
+        "height": 174,
         "resizable": false,
         "maximizable": false,
         "minimizable": false,
@@ -27,7 +27,8 @@
         "focus": false,
         "focusable": false,
         "visible": false,
-        "visibleOnAllWorkspaces": true
+        "visibleOnAllWorkspaces": true,
+        "additionalBrowserArgs": "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required"
       }
     ],
     "security": {
@@ -36,13 +37,18 @@
   },
   "bundle": {
     "active": true,
-    "targets": ["nsis", "msi"],
+    "targets": [
+      "nsis",
+      "msi"
+    ],
     "category": "DeveloperTool",
     "shortDescription": "Un notch qui affiche l'activité de Claude Code",
     "license": "GPL-3.0-only",
     "licenseFile": "../LICENSE",
     "windows": {
-      "webviewInstallMode": { "type": "downloadBootstrapper" }
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper"
+      }
     },
     "icon": [
       "icons/32x32.png",

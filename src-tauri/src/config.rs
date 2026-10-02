@@ -19,6 +19,8 @@ pub struct Config {
     pub server_port: u16,
     /// Sessions silent for this long are considered dead and removed.
     pub session_timeout_minutes: u64,
+    /// Plays a sound when a session needs attention (DF-0003).
+    pub sound_enabled: bool,
 }
 
 impl Default for Config {
@@ -27,6 +29,7 @@ impl Default for Config {
             schema_version: SCHEMA_VERSION,
             server_port: 47821,
             session_timeout_minutes: 180,
+            sound_enabled: true,
         }
     }
 }
@@ -52,6 +55,10 @@ pub fn load_or_create(dir: &Path) -> Config {
             Config::default()
         }
     }
+}
+
+pub fn save(dir: &Path, config: &Config) -> io::Result<()> {
+    write_json(dir, CONFIG_FILE, config)
 }
 
 /// Token guarding the local hook server, generated once per installation.
