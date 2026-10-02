@@ -1,8 +1,9 @@
 use tauri::{
     AppHandle, Manager,
-    menu::{Menu, MenuItem, PredefinedMenuItem},
+    menu::{CheckMenuItem, Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
+use tauri_plugin_autostart::ManagerExt;
 
 use crate::NOTCH_LABEL;
 
@@ -22,9 +23,28 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let autostart_enabled = app.autolaunch().is_enabled().unwrap_or(false);
+    let autostart = CheckMenuItem::with_id(
+        app,
+        "autostart",
+        "Lancer au démarrage de l'ordinateur",
+        true,
+        autostart_enabled,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quitter winotch", true, None::<&str>)?;
-    let separator = PredefinedMenuItem::separator(app)?;
-    let menu = Menu::with_items(app, &[&toggle, &connect, &disconnect, &separator, &quit])?;
+    let menu = Menu::with_items(
+        app,
+        &[
+            &toggle,
+            &PredefinedMenuItem::separator(app)?,
+            &connect,
+            &disconnect,
+            &PredefinedMenuItem::separator(app)?,
+            &autostart,
+            &quit,
+        ],
+    )?;
 
     TrayIconBuilder::with_id("main")
         .icon(
@@ -34,15 +54,30 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         )
         .tooltip("winotch")
         .menu(&menu)
-        .on_menu_event(|app, event| match event.id.as_ref() {
+        .on_menu_event(move |app, event| match event.id.as_ref() {
             "toggle" => {
-                if let Some(w) = app.get_webview_window(NOTCH_LABEL) {
-                    let visible = w.is_visible().unwrap_or(false);
-                    let _ = if visible { w.hide() } else { w.show() };
-                }
+                let visible = app
+                    .get_webview_window(NOTCH_LABEL)
+                    .and_then(|w| w.is_visible().ok())
+                    .unwrap_or(false);
+                crate::notch::set_user_visible(app, !visible);
             }
             "connect" => crate::connect_claude_code(app, true),
             "disconnect" => crate::connect_claude_code(app, false),
+            "autostart" => {
+                let launcher = app.autolaunch();
+                let enable = !launcher.is_enabled().unwrap_or(false);
+                let result = if enable {
+                    launcher.enable()
+                } else {
+                    launcher.disable()
+                };
+                if let Err(e) = result {
+                    log::error!("cannot change autostart: {e}");
+                }
+                // Reflect the real state, whatever happened.
+                let _ = autostart.set_checked(launcher.is_enabled().unwrap_or(false));
+            }
             "quit" => app.exit(0),
             _ => {}
         })

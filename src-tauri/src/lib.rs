@@ -8,6 +8,7 @@ mod tray;
 
 use std::path::PathBuf;
 use std::sync::Mutex;
+use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -24,6 +25,8 @@ pub struct AppState {
     pub token: String,
     pub claude_settings: PathBuf,
     pub server_error: Option<String>,
+    /// Hidden from the tray menu: fullscreen detection must not show it back.
+    pub user_hidden: AtomicBool,
 }
 
 #[derive(Clone, Serialize)]
@@ -96,10 +99,9 @@ pub fn run() {
     tauri::Builder::default()
         // A second launch would fail to bind the hook port: show the running one instead.
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            if let Some(w) = app.get_webview_window(NOTCH_LABEL) {
-                let _ = w.show();
-            }
+            notch::set_user_visible(app, true);
         }))
+        .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_sessions,
             get_status,
@@ -132,15 +134,16 @@ pub fn run() {
                 token,
                 claude_settings,
                 server_error,
+                user_hidden: AtomicBool::new(false),
             });
             spawn_pruner(app.handle().clone(), timeout);
 
             let window = app
                 .get_webview_window(NOTCH_LABEL)
                 .expect("notch window is declared in tauri.conf.json");
-            platform::prepare_overlay(&window)?;
             notch::place_on_primary_monitor(&window)?;
-            window.show()?;
+            notch::show(&window)?;
+            notch::spawn_watcher(app.handle().clone());
 
             tray::create(app.handle())?;
             Ok(())
