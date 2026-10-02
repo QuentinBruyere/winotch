@@ -7,19 +7,25 @@ use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 use crate::resistance::Rect;
 use crate::{AppState, NOTCH_LABEL, platform};
 
-/// Visible notch shape in logical pixels, chosen by the front (DF-0003).
-/// Starts compact; must match `COMPACT` in src/App.svelte.
-static HIT_AREA: Mutex<(f64, f64)> = Mutex::new((300.0, 36.0));
+/// Visible notch shape in logical pixels, chosen by the front (DF-0003):
+/// width, height and bottom corner radius. Starts compact; must match
+/// `COMPACT` in src/App.svelte and `--notch-radius` in src/app.css.
+static HIT_AREA: Mutex<(f64, f64, f64)> = Mutex::new((300.0, 36.0, 14.0));
 
 /// Records the visible shape and restricts the window to it.
-pub fn set_hit_area(window: &WebviewWindow, width: f64, height: f64) -> tauri::Result<()> {
-    *HIT_AREA.lock().unwrap() = (width, height);
+pub fn set_hit_area(
+    window: &WebviewWindow,
+    width: f64,
+    height: f64,
+    radius: f64,
+) -> tauri::Result<()> {
+    *HIT_AREA.lock().unwrap() = (width, height, radius);
     apply_hit_area(window)
 }
 
 /// Re-applies the last shape, e.g. after a DPI change.
 pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
-    let (width, height) = *HIT_AREA.lock().unwrap();
+    let (width, height, radius) = *HIT_AREA.lock().unwrap();
     platform::set_hit_area(window, width, height)?;
 
     // Same shape in screen coordinates, for the cursor resistance (DF-0004).
@@ -33,6 +39,7 @@ pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
         top: position.y,
         right: left + width,
         bottom: position.y + (height * scale).round() as i32,
+        radius: (radius * scale).round() as i32,
     });
     Ok(())
 }
@@ -116,13 +123,36 @@ pub fn spawn_watcher(app: AppHandle) {
 
             // Idempotent: follows visibility changes (fullscreen, tray, setting).
             update_cursor_resistance(&app);
+            if let Some(b) = platform::take_breakthrough() {
+                log::info!(
+                    "cursor entered the notch from the {}: {} ms, {} mouse events",
+                    if b.side { "side" } else { "bottom" },
+                    b.duration_ms,
+                    b.events
+                );
+            }
 
-            let now_fullscreen = platform::fullscreen_on_primary();
+            // With the option off, a fullscreen app is never detected: the notch
+            // stays (or comes back) on screen.
+            let hide_in_fullscreen = app
+                .state::<AppState>()
+                .config
+                .lock()
+                .unwrap()
+                .hide_in_fullscreen;
+            let now_fullscreen = hide_in_fullscreen && platform::fullscreen_on_primary();
             if now_fullscreen == fullscreen {
                 continue;
             }
             fullscreen = now_fullscreen;
-            log::info!("fullscreen app on primary monitor: {fullscreen}");
+            if fullscreen {
+                log::info!(
+                    "fullscreen app on primary monitor ({}): notch hidden",
+                    platform::foreground_class()
+                );
+            } else {
+                log::info!("fullscreen app gone: notch shown");
+            }
             let user_hidden = app.state::<AppState>().user_hidden.load(Ordering::Relaxed);
             let result = if fullscreen {
                 window.hide()

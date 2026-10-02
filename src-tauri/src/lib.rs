@@ -5,11 +5,12 @@ mod platform;
 mod resistance;
 mod server;
 mod sessions;
+mod settings;
 mod tray;
 
 use std::path::PathBuf;
-use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
@@ -26,7 +27,9 @@ pub struct AppState {
     pub config_dir: PathBuf,
     pub token: String,
     pub claude_settings: PathBuf,
-    pub server_error: Option<String>,
+    /// Running hook server; replaced when the port changes.
+    pub server: Mutex<Option<Arc<tiny_http::Server>>>,
+    pub server_error: Mutex<Option<String>>,
     /// Hidden from the tray menu: fullscreen detection must not show it back.
     pub user_hidden: AtomicBool,
 }
@@ -59,37 +62,18 @@ fn acknowledge(app: AppHandle, state: tauri::State<AppState>) {
 
 /// The front decides the visible notch shape (compact / expanded, DF-0003).
 #[tauri::command]
-fn set_hit_area(window: tauri::WebviewWindow, width: f64, height: f64) -> Result<(), String> {
-    notch::set_hit_area(&window, width, height).map_err(|e| e.to_string())
-}
-
-/// Turns the notification sound on or off and remembers the choice.
-pub fn set_sound_enabled(app: &AppHandle, enabled: bool) {
-    let state = app.state::<AppState>();
-    let mut config = state.config.lock().unwrap();
-    config.sound_enabled = enabled;
-    if let Err(e) = config::save(&state.config_dir, &config) {
-        log::error!("cannot save config: {e}");
-    }
-    drop(config);
-    emit_status(app);
-}
-
-/// Turns the cursor resistance on or off and remembers the choice.
-pub fn set_cursor_resistance_enabled(app: &AppHandle, enabled: bool) {
-    let state = app.state::<AppState>();
-    let mut config = state.config.lock().unwrap();
-    config.cursor_resistance = enabled;
-    if let Err(e) = config::save(&state.config_dir, &config) {
-        log::error!("cannot save config: {e}");
-    }
-    drop(config);
-    notch::update_cursor_resistance(app);
+fn set_hit_area(
+    window: tauri::WebviewWindow,
+    width: f64,
+    height: f64,
+    radius: f64,
+) -> Result<(), String> {
+    notch::set_hit_area(&window, width, height, radius).map_err(|e| e.to_string())
 }
 
 fn status(state: &AppState) -> Status {
     Status {
-        server_error: state.server_error.clone(),
+        server_error: state.server_error.lock().unwrap().clone(),
         hooks_installed: claude_settings::is_installed(&state.claude_settings),
         sound_enabled: state.config.lock().unwrap().sound_enabled,
     }
@@ -104,43 +88,31 @@ pub fn emit_status(app: &AppHandle) {
     let _ = app.emit("status-changed", status(&app.state::<AppState>()));
 }
 
-/// Adds (`true`) or removes (`false`) winotch's hooks in the Claude Code settings.
-pub fn connect_claude_code(app: &AppHandle, connect: bool) {
-    let state = app.state::<AppState>();
-    let result = if connect {
-        claude_settings::install(
-            &state.claude_settings,
-            state.config.lock().unwrap().server_port,
-            &state.token,
-        )
-    } else {
-        claude_settings::uninstall(&state.claude_settings)
-    };
-    let message = match result {
-        Ok(()) if connect => "Claude Code connecté".to_owned(),
-        Ok(()) => "Claude Code déconnecté".to_owned(),
-        Err(e) => {
-            log::error!("cannot update {}: {e}", state.claude_settings.display());
-            "Échec : voir les logs".to_owned()
-        }
-    };
-    let _ = app.emit("notice", message);
-    emit_status(app);
-}
-
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        // A second launch would fail to bind the hook port: show the running one instead.
+        // A second launch would fail to bind the hook port: bring the running
+        // one forward instead, notch and settings (e.g. from the Start menu).
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             notch::set_user_visible(app, true);
+            if let Err(e) = settings::open(app) {
+                log::error!("cannot open settings: {e}");
+            }
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
             get_sessions,
             get_status,
             acknowledge,
-            set_hit_area
+            set_hit_area,
+            settings::get_settings,
+            settings::set_sound,
+            settings::set_hide_in_fullscreen,
+            settings::set_cursor_resistance,
+            settings::set_session_timeout,
+            settings::set_autostart,
+            settings::set_claude_connected,
+            settings::set_server_port
         ])
         .setup(|app| {
             if cfg!(debug_assertions) {
@@ -155,24 +127,26 @@ pub fn run() {
             let config = config::load_or_create(&config_dir);
             let token = config::load_or_create_token(&config_dir)?;
             let claude_settings = claude_settings::settings_path(&app.path().home_dir()?);
-            let server_error =
-                server::spawn(app.handle().clone(), config.server_port, token.clone())
-                    .err()
-                    .map(|e| {
+            let (server, server_error) =
+                match server::start(app.handle().clone(), config.server_port, token.clone()) {
+                    Ok(server) => (Some(server), None),
+                    Err(e) => {
                         log::error!("hook server: {e}");
-                        format!("Port {} occupé", config.server_port)
-                    });
-            let timeout = Duration::from_secs(config.session_timeout_minutes * 60);
+                        (None, Some(format!("Port {} occupé", config.server_port)))
+                    }
+                };
+            platform::set_resistance_strength(config.cursor_resistance_strength);
             app.manage(AppState {
                 sessions: Mutex::new(SessionStore::default()),
                 config: Mutex::new(config),
                 config_dir,
                 token,
                 claude_settings,
-                server_error,
+                server: Mutex::new(server),
+                server_error: Mutex::new(server_error),
                 user_hidden: AtomicBool::new(false),
             });
-            spawn_pruner(app.handle().clone(), timeout);
+            spawn_pruner(app.handle().clone());
 
             let window = app
                 .get_webview_window(NOTCH_LABEL)
@@ -212,16 +186,18 @@ pub fn run() {
 }
 
 /// Removes sessions whose terminal died without sending `SessionEnd`.
-fn spawn_pruner(app: AppHandle, timeout: Duration) {
+fn spawn_pruner(app: AppHandle) {
     std::thread::spawn(move || {
         loop {
             std::thread::sleep(Duration::from_secs(60));
-            let changed = app
-                .state::<AppState>()
+            let state = app.state::<AppState>();
+            // Read every time: the delay can change in the settings.
+            let minutes = state.config.lock().unwrap().session_timeout_minutes;
+            let changed = state
                 .sessions
                 .lock()
                 .unwrap()
-                .prune(Instant::now(), timeout);
+                .prune(Instant::now(), Duration::from_secs(minutes * 60));
             if changed {
                 emit_sessions(&app);
             }

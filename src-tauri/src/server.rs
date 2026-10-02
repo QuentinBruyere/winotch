@@ -1,6 +1,7 @@
 //! Local HTTP server receiving Claude Code hook events (127.0.0.1 only).
 
 use std::io::Read;
+use std::sync::Arc;
 use std::time::Instant;
 
 use tauri::{AppHandle, Manager};
@@ -13,13 +14,16 @@ use crate::sessions::HookEvent;
 /// Hook payloads embed tool inputs (whole files for `Write`): cap what we read.
 const MAX_BODY: u64 = 16 * 1024 * 1024;
 
-pub fn spawn(app: AppHandle, port: u16, token: String) -> Result<(), String> {
-    let server = Server::http(("127.0.0.1", port)).map_err(|e| e.to_string())?;
+/// Starts listening on `port`. The returned handle stops the server with `unblock()`.
+pub fn start(app: AppHandle, port: u16, token: String) -> Result<Arc<Server>, String> {
+    let server = Arc::new(Server::http(("127.0.0.1", port)).map_err(|e| e.to_string())?);
     log::info!("hook server listening on 127.0.0.1:{port}");
     let expected = format!("Bearer {token}");
 
+    let listener = Arc::clone(&server);
     std::thread::spawn(move || {
-        for mut request in server.incoming_requests() {
+        // Ends when `unblock()` is called (port change).
+        for mut request in listener.incoming_requests() {
             let status = match (request.method(), request.url()) {
                 (Method::Get, "/winotch/health") => 200,
                 (Method::Post, HOOK_PATH) if !authorized(&request, &expected) => 401,
@@ -42,8 +46,9 @@ pub fn spawn(app: AppHandle, port: u16, token: String) -> Result<(), String> {
             // An empty 2xx body means "no decision": Claude Code carries on as usual.
             let _ = request.respond(Response::empty(status));
         }
+        log::info!("hook server on port {port} stopped");
     });
-    Ok(())
+    Ok(server)
 }
 
 fn authorized(request: &tiny_http::Request, expected: &str) -> bool {

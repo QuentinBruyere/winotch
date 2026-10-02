@@ -4,8 +4,9 @@
 mod windows;
 #[cfg(windows)]
 pub use windows::{
-    fullscreen_on_primary, prepare_overlay, set_cursor_resistance, set_hit_area,
-    set_resistance_rect,
+    bring_to_front, foreground_class, fullscreen_on_primary, prepare_overlay,
+    set_cursor_resistance, set_hit_area, set_resistance_rect, set_resistance_strength,
+    take_breakthrough,
 };
 
 #[cfg(not(windows))]
@@ -32,3 +33,21 @@ pub fn set_cursor_resistance(_active: bool) {}
 
 #[cfg(not(windows))]
 pub fn set_resistance_rect(_rect: crate::resistance::Rect) {}
+
+#[cfg(not(windows))]
+pub fn set_resistance_strength(_strength: crate::resistance::Strength) {}
+
+#[cfg(not(windows))]
+pub fn bring_to_front(window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    window.set_focus()
+}
+
+#[cfg(not(windows))]
+pub fn take_breakthrough() -> Option<crate::resistance::Breakthrough> {
+    None
+}
+
+#[cfg(not(windows))]
+pub fn foreground_class() -> String {
+    String::new()
+}

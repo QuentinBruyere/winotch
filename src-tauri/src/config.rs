@@ -7,6 +7,8 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::resistance::Strength;
+
 const CONFIG_FILE: &str = "config.json";
 const TOKEN_FILE: &str = "hook-token";
 const SCHEMA_VERSION: u32 = 1;
@@ -23,6 +25,9 @@ pub struct Config {
     pub sound_enabled: bool,
     /// Holds the cursor at the notch edge until the user pushes through (DF-0004).
     pub cursor_resistance: bool,
+    pub cursor_resistance_strength: Strength,
+    /// Hides the notch while an app is fullscreen on its monitor (DF-0002).
+    pub hide_in_fullscreen: bool,
 }
 
 impl Default for Config {
@@ -33,6 +38,8 @@ impl Default for Config {
             session_timeout_minutes: 180,
             sound_enabled: true,
             cursor_resistance: true,
+            cursor_resistance_strength: Strength::default(),
+            hide_in_fullscreen: true,
         }
     }
 }

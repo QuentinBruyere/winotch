@@ -20,10 +20,16 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  /* The window is transparent: only the notch shape is painted. */
+  /* The notch window is transparent: only the notch shape is painted. */
   background: transparent;
   user-select: none;
   cursor: default;
+}
+
+/* The settings window is a regular, opaque window. */
+html[data-window="settings"] body {
+  overflow: auto;
+  user-select: auto;
 }
 
 #app {

@@ -8,7 +8,10 @@
   // Notch sizes in logical pixels (DF-0003). The window itself is fixed at the
   // expanded maximum (tauri.conf.json: 380 x 174) and only its clickable area
   // follows the shape; COMPACT must match HIT_AREA in src-tauri/src/notch.rs.
-  const COMPACT = { width: 300, height: 36 }
+  // Radii must match the CSS of src/lib/Notch.svelte (--notch-radius, .expanded):
+  // the cursor resistance follows the rounded corners.
+  const COMPACT = { width: 300, height: 36, radius: 14 }
+  const EXPANDED_RADIUS = 20
   const EXPANDED_WIDTH = 380
   const ROW_HEIGHT = 26
   const MAX_ROWS = 6
@@ -31,6 +34,7 @@
       ? {
           width: EXPANDED_WIDTH,
           height: 18 + Math.min(sessions.length, MAX_ROWS) * ROW_HEIGHT,
+          radius: EXPANDED_RADIUS,
         }
       : COMPACT,
   )
@@ -56,13 +60,13 @@
   // once the shape has finished closing, so the animation is never clipped.
   let resizeTimer: ReturnType<typeof setTimeout> | undefined
   $effect(() => {
-    const { width, height } = shape
+    const { width, height, radius } = shape
     clearTimeout(resizeTimer)
     if (expanded) {
-      void invoke('set_hit_area', { width, height })
+      void invoke('set_hit_area', { width, height, radius })
     } else {
       resizeTimer = setTimeout(
-        () => void invoke('set_hit_area', { width, height }),
+        () => void invoke('set_hit_area', { width, height, radius }),
         ANIMATION_MS,
       )
     }

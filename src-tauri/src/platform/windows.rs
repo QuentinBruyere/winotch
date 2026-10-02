@@ -3,8 +3,8 @@ use std::mem::{size_of, zeroed};
 use tauri::WebviewWindow;
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::Graphics::Gdi::{
-    CreateRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromWindow,
-    SetWindowRgn,
+    CreateRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromPoint,
+    MonitorFromWindow, SetWindowRgn,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
@@ -37,7 +37,7 @@ pub fn prepare_overlay(window: &WebviewWindow) -> tauri::Result<()> {
 pub fn fullscreen_on_primary() -> bool {
     unsafe {
         let hwnd = GetForegroundWindow();
-        if hwnd.is_null() || is_desktop(hwnd) {
+        if hwnd.is_null() || is_shell_window(hwnd) {
             return false;
         }
         let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
@@ -63,12 +63,32 @@ pub fn fullscreen_on_primary() -> bool {
     }
 }
 
-/// The desktop and taskbar can be "foreground" and cover the screen.
-unsafe fn is_desktop(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
-    let mut class = [0u16; 64];
+/// Shell windows that can be foreground and cover the whole screen without
+/// being a fullscreen app: the notch must stay visible over them.
+const SHELL_CLASSES: &[&str] = &[
+    // Desktop and taskbar.
+    "Progman",
+    "WorkerW",
+    "Shell_TrayWnd",
+    // Alt+Tab and Win+Tab: Windows 10, then Windows 11.
+    "MultitaskingViewFrame",
+    "XamlExplorerHostIslandWindow",
+];
+
+unsafe fn is_shell_window(hwnd: windows_sys::Win32::Foundation::HWND) -> bool {
+    SHELL_CLASSES.contains(&unsafe { class_name(hwnd) }.as_str())
+}
+
+unsafe fn class_name(hwnd: windows_sys::Win32::Foundation::HWND) -> String {
+    let mut class = [0u16; 128];
     let len = unsafe { GetClassNameW(hwnd, class.as_mut_ptr(), class.len() as i32) };
-    let class = String::from_utf16_lossy(&class[..len.max(0) as usize]);
-    matches!(class.as_str(), "Progman" | "WorkerW" | "Shell_TrayWnd")
+    String::from_utf16_lossy(&class[..len.max(0) as usize])
+}
+
+/// Window class of the foreground window, logged when it hides the notch so
+/// that other shell overlays wrongly taken for fullscreen apps can be spotted.
+pub fn foreground_class() -> String {
+    unsafe { class_name(GetForegroundWindow()) }
 }
 
 /// Limits the window to the visible notch shape: outside this rectangle the
@@ -93,7 +113,7 @@ pub fn set_hit_area(window: &WebviewWindow, width: f64, height: f64) -> tauri::R
 // --- Cursor resistance (DF-0004): a low-level mouse hook on its own thread ---
 
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicI32, AtomicU32, AtomicU64, Ordering};
 
 use windows_sys::Win32::Foundation::{LPARAM, LRESULT, POINT, WPARAM};
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
@@ -104,10 +124,27 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_MOUSEMOVE, WM_QUIT,
 };
 
-use crate::resistance::{Rect, Resistance, Verdict};
+use crate::resistance::{Breakthrough, Rect, Resistance, Strength, Verdict, clip_to_screen_top};
+
+/// Last breakthrough, packed for lock-free hand-over to the watcher thread
+/// (which logs it): bit 63 = new, bit 62 = side, bits 32..62 = events,
+/// bits 0..32 = duration in ms.
+static LAST_BREAKTHROUGH: AtomicU64 = AtomicU64::new(0);
+
+/// Returns the breakthrough recorded since the last call, if any.
+pub fn take_breakthrough() -> Option<Breakthrough> {
+    let packed = LAST_BREAKTHROUGH.swap(0, Ordering::Relaxed);
+    (packed >> 63 == 1).then_some(Breakthrough {
+        side: (packed >> 62) & 1 == 1,
+        events: ((packed >> 32) & 0x3fff_ffff) as u32,
+        duration_ms: packed as u32,
+    })
+}
 
 /// Notch rectangle in physical screen pixels, read by the hook on every move.
-static NOTCH_RECT: [AtomicI32; 4] = [const { AtomicI32::new(0) }; 4];
+static NOTCH_RECT: [AtomicI32; 5] = [const { AtomicI32::new(0) }; 5];
+/// Push distance to get through, in px (from the chosen `Strength`).
+static BREAKTHROUGH: AtomicU32 = AtomicU32::new(80);
 /// Whether the hook should be installed.
 static WANTED: AtomicBool = AtomicBool::new(false);
 /// Thread id of the running hook thread, 0 when none.
@@ -119,22 +156,29 @@ thread_local! {
     static STATE: RefCell<Resistance> = RefCell::new(Resistance::default());
 }
 
+pub fn set_resistance_strength(strength: Strength) {
+    BREAKTHROUGH.store(strength.breakthrough() as u32, Ordering::Relaxed);
+}
+
 pub fn set_resistance_rect(rect: Rect) {
-    for (slot, value) in NOTCH_RECT
-        .iter()
-        .zip([rect.left, rect.top, rect.right, rect.bottom])
+    for (slot, value) in
+        NOTCH_RECT
+            .iter()
+            .zip([rect.left, rect.top, rect.right, rect.bottom, rect.radius])
     {
         slot.store(value, Ordering::Relaxed);
     }
 }
 
 fn load_rect() -> Rect {
-    let [left, top, right, bottom] = NOTCH_RECT.each_ref().map(|v| v.load(Ordering::Relaxed));
+    let [left, top, right, bottom, radius] =
+        NOTCH_RECT.each_ref().map(|v| v.load(Ordering::Relaxed));
     Rect {
         left,
         top,
         right,
         bottom,
+        radius,
     }
 }
 
@@ -191,19 +235,67 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
         let info = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
         let mut from = POINT { x: 0, y: 0 };
         if info.flags & LLMHF_INJECTED == 0 && unsafe { GetCursorPos(&mut from) } != 0 {
+            let rect = load_rect();
+            let mut to = (info.pt.x, info.pt.y);
+            // Only above the notch, so the monitor lookup stays off the hot path.
+            if to.1 < rect.top {
+                let offscreen =
+                    unsafe { MonitorFromPoint(info.pt, MONITOR_DEFAULTTONULL) }.is_null();
+                to = clip_to_screen_top(rect, to, offscreen);
+            }
             let verdict = STATE.with_borrow_mut(|state| {
                 state.on_move(
-                    load_rect(),
+                    rect,
                     (from.x, from.y),
-                    (info.pt.x, info.pt.y),
+                    to,
                     info.time,
+                    f64::from(BREAKTHROUGH.load(Ordering::Relaxed)),
                 )
             });
-            if let Verdict::Hold(x, y) = verdict {
-                unsafe { SetCursorPos(x, y) };
-                return 1;
+            match verdict {
+                Verdict::Hold(x, y) => {
+                    unsafe { SetCursorPos(x, y) };
+                    return 1;
+                }
+                Verdict::Enter(b) => {
+                    let packed = (1u64 << 63)
+                        | (u64::from(b.side) << 62)
+                        | (u64::from(b.events.min(0x3fff_ffff)) << 32)
+                        | u64::from(b.duration_ms);
+                    LAST_BREAKTHROUGH.store(packed, Ordering::Relaxed);
+                }
+                Verdict::Allow => {}
             }
         }
     }
     unsafe { CallNextHookEx(std::ptr::null_mut(), code, wparam, lparam) }
+}
+
+// --- Bringing a window to the front ---
+
+use windows_sys::Win32::System::Threading::AttachThreadInput;
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    BringWindowToTop, GetWindowThreadProcessId, SetForegroundWindow,
+};
+
+/// Windows refuses `SetForegroundWindow` to an app that did not receive the
+/// last input (e.g. opened from a second launch or after the tray menu closed):
+/// the window then opens behind the others. Attaching to the input queue of
+/// the current foreground window lifts that restriction for this call.
+pub fn bring_to_front(window: &WebviewWindow) -> tauri::Result<()> {
+    let hwnd = window.hwnd()?.0;
+    unsafe {
+        let foreground = GetForegroundWindow();
+        let foreground_thread = GetWindowThreadProcessId(foreground, std::ptr::null_mut());
+        let current_thread = GetCurrentThreadId();
+        let attached = foreground_thread != 0
+            && foreground_thread != current_thread
+            && AttachThreadInput(current_thread, foreground_thread, 1) != 0;
+        BringWindowToTop(hwnd);
+        SetForegroundWindow(hwnd);
+        if attached {
+            AttachThreadInput(current_thread, foreground_thread, 0);
+        }
+    }
+    Ok(())
 }
