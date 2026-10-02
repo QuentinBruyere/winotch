@@ -4,9 +4,8 @@
 mod windows;
 #[cfg(windows)]
 pub use windows::{
-    bring_to_front, foreground_class, fullscreen_on_primary, prepare_overlay,
-    set_cursor_resistance, set_hit_area, set_resistance_rect, set_resistance_strength,
-    take_breakthrough,
+    bring_to_front, foreground_class, fullscreen_on_primary, prepare_overlay, restrict_to_shape,
+    set_cursor_resistance, set_resistance_rect, set_resistance_strength, take_breakthrough,
 };
 
 #[cfg(not(windows))]
@@ -22,9 +21,15 @@ pub fn fullscreen_on_primary() -> bool {
 
 /// Outside Windows the window itself is resized to the notch shape for now.
 #[cfg(not(windows))]
-pub fn set_hit_area(window: &tauri::WebviewWindow, width: f64, height: f64) -> tauri::Result<()> {
-    window.set_size(tauri::LogicalSize::new(width, height))?;
-    crate::notch::place_on_primary_monitor(window)
+pub fn restrict_to_shape(
+    window: &tauri::WebviewWindow,
+    _x: i32,
+    _y: i32,
+    width: i32,
+    height: i32,
+) -> tauri::Result<()> {
+    window.set_size(tauri::PhysicalSize::new(width as u32, height as u32))?;
+    crate::notch::place(window)
 }
 
 /// Cursor resistance needs a system-wide mouse hook: Windows only for now.

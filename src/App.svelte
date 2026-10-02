@@ -2,16 +2,20 @@
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import Notch from './lib/Notch.svelte'
-  import { newAlerts, soundFor, type Session, type Status } from './lib/session'
+  import { newAlerts, soundFor, type Edge, type Session, type Status } from './lib/session'
   import { playSound } from './lib/sound'
 
-  // Notch sizes in logical pixels (DF-0003). The window itself is fixed at the
-  // expanded maximum (tauri.conf.json: 380 x 174) and only its clickable area
-  // follows the shape; COMPACT must match HIT_AREA in src-tauri/src/notch.rs.
-  // Radii must match the CSS of src/lib/Notch.svelte (--notch-radius, .expanded):
-  // the cursor resistance follows the rounded corners.
-  const COMPACT = { width: 300, height: 36, radius: 14 }
+  // Notch sizes in logical pixels (DF-0003, DF-0006). The window itself is
+  // fixed at the expanded maximum (tauri.conf.json: 380 x 174) and only its
+  // clickable area follows the shape; compact shapes must match `compact_shape`
+  // in src-tauri/src/notch.rs. The cursor resistance follows the rounded corners.
+  const COMPACT_RADIUS = 14
   const EXPANDED_RADIUS = 20
+  // Thin and vertical on the left / right edges.
+  const compactShape = (edge: Edge) =>
+    edge === 'left' || edge === 'right'
+      ? { width: 36, height: 120, radius: COMPACT_RADIUS }
+      : { width: 300, height: 36, radius: COMPACT_RADIUS }
   const EXPANDED_WIDTH = 380
   const ROW_HEIGHT = 26
   const MAX_ROWS = 6
@@ -23,21 +27,30 @@
     serverError: null,
     hooksInstalled: false,
     soundEnabled: true,
+    edge: 'top',
   })
   let notice = $state<string | null>(null)
   let hovered = $state(false)
   let alerting = $state(false)
 
-  const expanded = $derived((hovered || alerting) && sessions.length > 0 && !notice)
+  const vertical = $derived(status.edge === 'left' || status.edge === 'right')
+  // A vertical notch shows no text: it may open even without sessions, to
+  // show the connection state, and opens to show notices.
+  const expanded = $derived(
+    (hovered || alerting) && !notice && (sessions.length > 0 || vertical),
+  )
+  const wideNotice = $derived(notice !== null && vertical)
   const shape = $derived(
-    expanded
+    expanded || wideNotice
       ? {
           width: EXPANDED_WIDTH,
-          height: 18 + Math.min(sessions.length, MAX_ROWS) * ROW_HEIGHT,
+          height:
+            18 + Math.max(1, Math.min(wideNotice ? 1 : sessions.length, MAX_ROWS)) * ROW_HEIGHT,
           radius: EXPANDED_RADIUS,
         }
-      : COMPACT,
+      : compactShape(status.edge),
   )
+  const open = $derived(expanded || wideNotice)
 
   let alertTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -62,7 +75,7 @@
   $effect(() => {
     const { width, height, radius } = shape
     clearTimeout(resizeTimer)
-    if (expanded) {
+    if (open) {
       void invoke('set_hit_area', { width, height, radius })
     } else {
       resizeTimer = setTimeout(
@@ -100,9 +113,11 @@
   {sessions}
   {status}
   {notice}
+  edge={status.edge}
   {expanded}
   width={shape.width}
   height={shape.height}
+  radius={shape.radius}
   onclick={() => invoke('acknowledge')}
   onenter={() => (hovered = true)}
   onleave={() => (hovered = false)}

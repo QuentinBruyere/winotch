@@ -1,6 +1,7 @@
 mod claude_settings;
 mod config;
 mod notch;
+mod placement;
 mod platform;
 mod resistance;
 mod server;
@@ -40,6 +41,8 @@ pub struct Status {
     server_error: Option<String>,
     hooks_installed: bool,
     sound_enabled: bool,
+    /// Screen edge the notch is attached to: drives its orientation.
+    edge: placement::Edge,
 }
 
 #[tauri::command]
@@ -72,10 +75,14 @@ fn set_hit_area(
 }
 
 fn status(state: &AppState) -> Status {
+    // Lock once: temporaries live until the end of the statement, so two
+    // `config.lock()` in this struct literal would deadlock the main thread.
+    let config = state.config.lock().unwrap().clone();
     Status {
         server_error: state.server_error.lock().unwrap().clone(),
         hooks_installed: claude_settings::is_installed(&state.claude_settings),
-        sound_enabled: state.config.lock().unwrap().sound_enabled,
+        sound_enabled: config.sound_enabled,
+        edge: config.placement.edge,
     }
 }
 
@@ -108,6 +115,7 @@ pub fn run() {
             settings::get_settings,
             settings::set_sound,
             settings::set_hide_in_fullscreen,
+            settings::set_edge,
             settings::set_cursor_resistance,
             settings::set_session_timeout,
             settings::set_autostart,
@@ -151,7 +159,7 @@ pub fn run() {
             let window = app
                 .get_webview_window(NOTCH_LABEL)
                 .expect("notch window is declared in tauri.conf.json");
-            notch::place_on_primary_monitor(&window)?;
+            notch::place(&window)?;
             notch::apply_hit_area(&window)?;
             notch::show(&window)?;
             notch::spawn_watcher(app.handle().clone());
@@ -173,9 +181,7 @@ pub fn run() {
             ) && let Some(w) = window.app_handle().get_webview_window(NOTCH_LABEL)
             {
                 std::thread::spawn(move || {
-                    if let Err(e) =
-                        notch::place_on_primary_monitor(&w).and_then(|_| notch::apply_hit_area(&w))
-                    {
+                    if let Err(e) = notch::place(&w).and_then(|_| notch::apply_hit_area(&w)) {
                         log::warn!("failed to reposition notch: {e}");
                     }
                 });

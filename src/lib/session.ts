@@ -18,11 +18,15 @@ export interface Session {
   startedAtMs: number
 }
 
+// Screen edge the notch is attached to, mirrors `Edge` in src-tauri/src/placement.rs
+export type Edge = 'top' | 'bottom' | 'left' | 'right'
+
 // Mirrors `Status` in src-tauri/src/lib.rs
 export interface Status {
   serverError: string | null
   hooksInstalled: boolean
   soundEnabled: boolean
+  edge: Edge
 }
 
 export const stateLabels: Record<SessionState, string> = {

@@ -95,16 +95,17 @@ pub fn foreground_class() -> String {
 /// window neither paints nor receives clicks, which go to the app below.
 /// Changing the region instead of resizing the window avoids the WebView2
 /// repaint flash a resize causes. Coordinates are physical, window-relative.
-pub fn set_hit_area(window: &WebviewWindow, width: f64, height: f64) -> tauri::Result<()> {
+pub fn restrict_to_shape(
+    window: &WebviewWindow,
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+) -> tauri::Result<()> {
     let hwnd = window.hwnd()?.0;
-    let scale = window.scale_factor()?;
-    let window_width = window.inner_size()?.width as i32;
-    let width = (width * scale).round() as i32;
-    let height = (height * scale).round() as i32;
-    let left = (window_width - width) / 2;
     unsafe {
         // The system owns the region once it is set: no DeleteObject.
-        let region = CreateRectRgn(left, 0, left + width, height);
+        let region = CreateRectRgn(x, y, x + width, y + height);
         SetWindowRgn(hwnd, region, 1);
     }
     Ok(())
@@ -124,10 +125,13 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_MOUSEMOVE, WM_QUIT,
 };
 
-use crate::resistance::{Breakthrough, Rect, Resistance, Strength, Verdict, clip_to_screen_top};
+use crate::placement::Edge;
+use crate::resistance::{
+    Breakthrough, Rect, Resistance, Strength, Verdict, beyond_attached_edge, clip_to_screen_edge,
+};
 
 /// Last breakthrough, packed for lock-free hand-over to the watcher thread
-/// (which logs it): bit 63 = new, bit 62 = side, bits 32..62 = events,
+/// (which logs it): bit 63 = new, bit 62 = through the inner edge, bits 32..62 = events,
 /// bits 0..32 = duration in ms.
 static LAST_BREAKTHROUGH: AtomicU64 = AtomicU64::new(0);
 
@@ -135,14 +139,14 @@ static LAST_BREAKTHROUGH: AtomicU64 = AtomicU64::new(0);
 pub fn take_breakthrough() -> Option<Breakthrough> {
     let packed = LAST_BREAKTHROUGH.swap(0, Ordering::Relaxed);
     (packed >> 63 == 1).then_some(Breakthrough {
-        side: (packed >> 62) & 1 == 1,
+        inner: (packed >> 62) & 1 == 1,
         events: ((packed >> 32) & 0x3fff_ffff) as u32,
         duration_ms: packed as u32,
     })
 }
 
 /// Notch rectangle in physical screen pixels, read by the hook on every move.
-static NOTCH_RECT: [AtomicI32; 5] = [const { AtomicI32::new(0) }; 5];
+static NOTCH_RECT: [AtomicI32; 6] = [const { AtomicI32::new(0) }; 6];
 /// Push distance to get through, in px (from the chosen `Strength`).
 static BREAKTHROUGH: AtomicU32 = AtomicU32::new(80);
 /// Whether the hook should be installed.
@@ -161,24 +165,34 @@ pub fn set_resistance_strength(strength: Strength) {
 }
 
 pub fn set_resistance_rect(rect: Rect) {
-    for (slot, value) in
-        NOTCH_RECT
-            .iter()
-            .zip([rect.left, rect.top, rect.right, rect.bottom, rect.radius])
-    {
+    for (slot, value) in NOTCH_RECT.iter().zip([
+        rect.left,
+        rect.top,
+        rect.right,
+        rect.bottom,
+        rect.radius,
+        rect.attached as i32,
+    ]) {
         slot.store(value, Ordering::Relaxed);
     }
 }
 
 fn load_rect() -> Rect {
-    let [left, top, right, bottom, radius] =
+    let [left, top, right, bottom, radius, attached] =
         NOTCH_RECT.each_ref().map(|v| v.load(Ordering::Relaxed));
+    let attached = match attached {
+        1 => Edge::Bottom,
+        2 => Edge::Left,
+        3 => Edge::Right,
+        _ => Edge::Top,
+    };
     Rect {
         left,
         top,
         right,
         bottom,
         radius,
+        attached,
     }
 }
 
@@ -237,11 +251,11 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
         if info.flags & LLMHF_INJECTED == 0 && unsafe { GetCursorPos(&mut from) } != 0 {
             let rect = load_rect();
             let mut to = (info.pt.x, info.pt.y);
-            // Only above the notch, so the monitor lookup stays off the hot path.
-            if to.1 < rect.top {
+            // Only past the attached edge, so the monitor lookup stays off the hot path.
+            if beyond_attached_edge(rect, to) {
                 let offscreen =
                     unsafe { MonitorFromPoint(info.pt, MONITOR_DEFAULTTONULL) }.is_null();
-                to = clip_to_screen_top(rect, to, offscreen);
+                to = clip_to_screen_edge(rect, to, offscreen);
             }
             let verdict = STATE.with_borrow_mut(|state| {
                 state.on_move(
@@ -259,7 +273,7 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
                 }
                 Verdict::Enter(b) => {
                     let packed = (1u64 << 63)
-                        | (u64::from(b.side) << 62)
+                        | (u64::from(b.inner) << 62)
                         | (u64::from(b.events.min(0x3fff_ffff)) << 32)
                         | u64::from(b.duration_ms);
                     LAST_BREAKTHROUGH.store(packed, Ordering::Relaxed);

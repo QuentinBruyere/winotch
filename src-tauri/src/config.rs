@@ -7,6 +7,7 @@ use std::path::Path;
 
 use serde::{Deserialize, Serialize};
 
+use crate::placement::Placement;
 use crate::resistance::Strength;
 
 const CONFIG_FILE: &str = "config.json";
@@ -28,6 +29,8 @@ pub struct Config {
     pub cursor_resistance_strength: Strength,
     /// Hides the notch while an app is fullscreen on its monitor (DF-0002).
     pub hide_in_fullscreen: bool,
+    /// Where the notch sits on screen (DF-0006).
+    pub placement: Placement,
 }
 
 impl Default for Config {
@@ -40,6 +43,7 @@ impl Default for Config {
             cursor_resistance: true,
             cursor_resistance_strength: Strength::default(),
             hide_in_fullscreen: true,
+            placement: Placement::default(),
         }
     }
 }

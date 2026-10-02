@@ -6,6 +6,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
+use crate::placement::Edge;
 use crate::resistance::Strength;
 use crate::{AppState, claude_settings, config, notch, platform, server};
 
@@ -17,6 +18,7 @@ pub const SETTINGS_LABEL: &str = "settings";
 pub struct Settings {
     sound_enabled: bool,
     hide_in_fullscreen: bool,
+    edge: Edge,
     cursor_resistance: bool,
     resistance_strength: Strength,
     /// Cursor resistance only exists on Windows for now.
@@ -36,6 +38,7 @@ pub fn current(app: &AppHandle) -> Settings {
     Settings {
         sound_enabled: config.sound_enabled,
         hide_in_fullscreen: config.hide_in_fullscreen,
+        edge: config.placement.edge,
         cursor_resistance: config.cursor_resistance,
         resistance_strength: config.cursor_resistance_strength,
         resistance_available: cfg!(windows),
@@ -90,6 +93,23 @@ pub fn get_settings(app: AppHandle) -> Settings {
 pub fn set_sound(app: AppHandle, enabled: bool) {
     update_config(&app, |c| c.sound_enabled = enabled);
     changed(&app);
+}
+
+/// Moves the notch to another screen edge, centered on it (DF-0006).
+#[tauri::command]
+pub fn set_edge(app: AppHandle, edge: Edge) -> Result<(), String> {
+    update_config(&app, |c| {
+        c.placement.edge = edge;
+        c.placement.offset = 0.5;
+    });
+    notch::reset_hit_area();
+    if let Some(window) = app.get_webview_window(crate::NOTCH_LABEL) {
+        notch::place(&window)
+            .and_then(|_| notch::apply_hit_area(&window))
+            .map_err(|e| e.to_string())?;
+    }
+    changed(&app);
+    Ok(())
 }
 
 /// Applied by the watcher within a second (DF-0002).
@@ -147,7 +167,9 @@ pub fn set_server_port(app: AppHandle, port: u16) -> Result<(), String> {
         return Err("Choisis un port entre 1024 et 65535".into());
     }
     let state = app.state::<AppState>();
-    if port == state.config.lock().unwrap().server_port && state.server.lock().unwrap().is_some() {
+    let current_port = state.config.lock().unwrap().server_port;
+    let running = state.server.lock().unwrap().is_some();
+    if port == current_port && running {
         return Ok(());
     }
     let new_server = server::start(app.clone(), port, state.token.clone())

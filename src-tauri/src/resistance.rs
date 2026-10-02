@@ -1,9 +1,12 @@
 //! Cursor resistance at the notch edge, see docs/fonctionnel/DF-0004-resistance-du-curseur.md.
 //! Pure geometry: the OS layer feeds mouse moves in and applies the verdict.
 
+use crate::placement::Edge as Side;
+
 /// The notch shape in physical screen pixels: a rectangle (`right` and
-/// `bottom` exclusive) whose two bottom corners are rounded with `radius`,
-/// exactly like the drawn notch.
+/// `bottom` exclusive) glued to the screen edge `attached`, whose two
+/// corners on the inside of the screen are rounded with `radius`, exactly
+/// like the drawn notch.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub left: i32,
@@ -11,6 +14,7 @@ pub struct Rect {
     pub right: i32,
     pub bottom: i32,
     pub radius: i32,
+    pub attached: Side,
 }
 
 impl Rect {
@@ -26,20 +30,25 @@ impl Rect {
             return false;
         }
         let r = f64::from(self.radius);
-        // Pixel centers, against the centers of the two corner circles.
+        // Pixel centers, against the centers of the rounded corner circles.
         let (x, y) = (f64::from(point.0) + 0.5, f64::from(point.1) + 0.5);
-        let center_y = f64::from(self.bottom) - r;
-        if y <= center_y {
-            return true;
-        }
-        let center_x = if x < f64::from(self.left) + r {
-            f64::from(self.left) + r
-        } else if x > f64::from(self.right) - r {
-            f64::from(self.right) - r
-        } else {
-            return true;
+        let (left, top) = (f64::from(self.left), f64::from(self.top));
+        let (right, bottom) = (f64::from(self.right), f64::from(self.bottom));
+        // The two rounded corners are on the inner side, opposite the
+        // attached edge: (is_left, is_top) for each.
+        let corners = match self.attached {
+            Side::Top => [(true, false), (false, false)],
+            Side::Bottom => [(true, true), (false, true)],
+            Side::Left => [(false, true), (false, false)],
+            Side::Right => [(true, true), (true, false)],
         };
-        (x - center_x).hypot(y - center_y) <= r
+        corners.iter().all(|&(is_left, is_top)| {
+            let cx = if is_left { left + r } else { right - r };
+            let cy = if is_top { top + r } else { bottom - r };
+            let in_corner_x = if is_left { x < cx } else { x > cx };
+            let in_corner_y = if is_top { y < cy } else { y > cy };
+            !(in_corner_x && in_corner_y) || (x - cx).hypot(y - cy) <= r
+        })
     }
 }
 
@@ -90,7 +99,8 @@ pub enum Verdict {
 /// How a breakthrough happened, logged to tune the resistance.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Breakthrough {
-    pub side: bool,
+    /// Through the edge facing the inside of the screen (vs a lateral edge).
+    pub inner: bool,
     pub duration_ms: u32,
     pub events: u32,
 }
@@ -117,8 +127,14 @@ impl Edge {
         }
     }
 
-    fn is_side(self) -> bool {
-        matches!(self, Edge::Left | Edge::Right)
+    /// The edge of the notch facing the inside of the screen.
+    fn inner(attached: Side) -> Edge {
+        match attached {
+            Side::Top => Edge::Bottom,
+            Side::Bottom => Edge::Top,
+            Side::Left => Edge::Right,
+            Side::Right => Edge::Left,
+        }
     }
 
     /// The point just outside `rect` on this edge, keeping the movement along
@@ -145,16 +161,32 @@ impl Edge {
     }
 }
 
+/// True when `to` lies past the screen edge the notch is attached to, where it
+/// may be off-screen (cheap check before asking the OS about monitors).
+pub fn beyond_attached_edge(rect: Rect, to: (i32, i32)) -> bool {
+    match rect.attached {
+        Side::Top => to.1 < rect.top,
+        Side::Bottom => to.1 >= rect.bottom,
+        Side::Left => to.0 < rect.left,
+        Side::Right => to.0 >= rect.right,
+    }
+}
+
 /// Windows hands the hook the *requested* position, which can be off-screen:
-/// a cursor resting on the top edge of the screen and pushed up and sideways
-/// asks for y < 0, which Windows then clamps back onto the top edge, right
-/// inside the notch, bypassing the resistance. Applies the same clamp first.
-/// `offscreen`: no monitor contains `to` (a monitor above keeps y < 0 valid).
-pub fn clip_to_screen_top(rect: Rect, to: (i32, i32), offscreen: bool) -> (i32, i32) {
-    if offscreen && to.1 < rect.top {
-        (to.0, rect.top)
-    } else {
-        to
+/// a cursor resting on the screen edge the notch is attached to, pushed
+/// outwards and sideways, asks for e.g. y < 0, which Windows then clamps back
+/// onto that edge, right inside the notch, bypassing the resistance. Applies
+/// the same clamp first. `offscreen`: no monitor contains `to` (a monitor
+/// beyond that edge keeps those positions valid).
+pub fn clip_to_screen_edge(rect: Rect, to: (i32, i32), offscreen: bool) -> (i32, i32) {
+    if !offscreen || !beyond_attached_edge(rect, to) {
+        return to;
+    }
+    match rect.attached {
+        Side::Top => (to.0, rect.top),
+        Side::Bottom => (to.0, rect.bottom - 1),
+        Side::Left => (rect.left, to.1),
+        Side::Right => (rect.right - 1, to.1),
     }
 }
 
@@ -190,11 +222,12 @@ impl Resistance {
         self.events += 1;
 
         // Coming from a transparent corner (inside the bounding rectangle but
-        // outside the shape): the corners are at the bottom, so it is a bottom
-        // entry, and the cursor stays where it was, just outside the curve.
+        // outside the shape): the corners are on the inner side, so it is an
+        // inner entry, and the cursor stays where it was, just outside the curve.
         let from_corner = rect.in_bounds(from);
+        let inner = Edge::inner(rect.attached);
         let edge = if from_corner {
-            Edge::Bottom
+            inner
         } else {
             Edge::crossed(rect, from)
         };
@@ -203,7 +236,7 @@ impl Resistance {
         if self.pressure >= breakthrough && f64::from(pushed_ms) >= breakthrough * MS_PER_PX {
             self.pressure = 0.0;
             return Verdict::Enter(Breakthrough {
-                side: edge.is_side(),
+                inner: edge == inner,
                 duration_ms: pushed_ms,
                 events: self.events,
             });
@@ -230,6 +263,7 @@ mod tests {
         right: 1430,
         bottom: 36,
         radius: 14,
+        attached: Side::Top,
     };
 
     /// Pushes `step` px into the notch every `every_ms` from `from`, held
@@ -332,13 +366,13 @@ mod tests {
     fn sliding_along_the_screen_top_into_the_side_is_held() {
         // Cursor at y = 0 pushed up-right: Windows requests y = -4 (off-screen).
         let mut r = Resistance::default();
-        let to = clip_to_screen_top(NOTCH, (1140, -4), true);
+        let to = clip_to_screen_edge(NOTCH, (1140, -4), true);
         assert_eq!(
             r.on_move(NOTCH, (1129, 0), to, 0, MEDIUM),
             Verdict::Hold(1129, 0)
         );
         // With a monitor above the notch, y < 0 is a real position: untouched.
-        assert_eq!(clip_to_screen_top(NOTCH, (1140, -4), false), (1140, -4));
+        assert_eq!(clip_to_screen_edge(NOTCH, (1140, -4), false), (1140, -4));
     }
 
     #[test]
@@ -363,6 +397,53 @@ mod tests {
         assert_eq!(
             r.on_move(NOTCH, (1131, 34), (1140, 28), 0, MEDIUM),
             Verdict::Hold(1131, 34)
+        );
+    }
+
+    #[test]
+    fn rounded_corners_follow_the_attached_edge() {
+        // Same 300 x 36 shape glued to the bottom of the screen: corners on top.
+        let bottom = Rect {
+            top: 1356,
+            bottom: 1392,
+            attached: Side::Bottom,
+            ..NOTCH
+        };
+        assert!(!bottom.contains((1130, 1356)));
+        assert!(bottom.contains((1130, 1391)));
+        // A vertical 36 x 120 notch on the left edge: corners on the right.
+        let left = Rect {
+            left: 0,
+            top: 600,
+            right: 36,
+            bottom: 720,
+            radius: 14,
+            attached: Side::Left,
+        };
+        assert!(!left.contains((35, 600)));
+        assert!(!left.contains((35, 719)));
+        assert!(left.contains((0, 600)));
+        assert!(left.contains((20, 660)));
+    }
+
+    #[test]
+    fn pushing_against_the_attached_screen_edge_is_clipped() {
+        let right = Rect {
+            left: 2524,
+            top: 600,
+            right: 2560,
+            bottom: 720,
+            radius: 14,
+            attached: Side::Right,
+        };
+        // Cursor on the right screen border, pushed right and down: Windows
+        // requests x = 2563 (off-screen), then clamps it inside the notch.
+        let to = clip_to_screen_edge(right, (2563, 610), true);
+        assert_eq!(to, (2559, 610));
+        let mut r = Resistance::default();
+        assert_eq!(
+            r.on_move(right, (2559, 590), to, 0, MEDIUM),
+            Verdict::Hold(2559, 599)
         );
     }
 

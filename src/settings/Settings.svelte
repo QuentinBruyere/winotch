@@ -5,9 +5,11 @@
 
   // Mirrors `Settings` in src-tauri/src/settings.rs
   type Strength = 'soft' | 'medium' | 'strong'
+  type Edge = 'top' | 'bottom' | 'left' | 'right'
   interface Settings {
     soundEnabled: boolean
     hideInFullscreen: boolean
+    edge: Edge
     cursorResistance: boolean
     resistanceStrength: Strength
     resistanceAvailable: boolean
@@ -19,6 +21,13 @@
     claudeSettingsPath: string
     configDir: string
   }
+
+  const edgeChoices: { value: Edge; label: string }[] = [
+    { value: 'top', label: 'Haut' },
+    { value: 'bottom', label: 'Bas' },
+    { value: 'left', label: 'Gauche' },
+    { value: 'right', label: 'Droite' },
+  ]
 
   type ResistanceChoice = 'off' | Strength
   const resistanceChoices: { value: ResistanceChoice; label: string }[] = [
@@ -104,7 +113,28 @@
 
     <section>
       <h2>Affichage</h2>
-      <label class="row">
+      <div class="stack">
+        <div>
+          <div class="label">Position du notch</div>
+          <div class="hint">
+            Centré sur le bord choisi de l'écran principal. À gauche et à droite, le
+            notch est fin et vertical : il s'ouvre au survol.
+          </div>
+        </div>
+        <div class="segmented" role="radiogroup" aria-label="Position du notch">
+          {#each edgeChoices as choice (choice.value)}
+            <button
+              role="radio"
+              aria-checked={settings.edge === choice.value}
+              class:selected={settings.edge === choice.value}
+              onclick={() => run('set_edge', { edge: choice.value })}
+            >
+              {choice.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+      <label class="row separated">
         <div>
           <div class="label">Masquer le notch en plein écran</div>
           <div class="hint">
@@ -293,7 +323,8 @@
     gap: 16px;
   }
 
-  .row + .row {
+  .row + .row,
+  .separated {
     margin-top: 14px;
     padding-top: 14px;
     border-top: 1px solid var(--border);
