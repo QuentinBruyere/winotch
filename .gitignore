@@ -1,0 +1,50 @@
+# --- Rust / Tauri ---
+/target/
+src-tauri/target/
+src-tauri/gen/schemas/
+**/*.rs.bk
+*.pdb
+
+# --- Node / front-end ---
+node_modules/
+dist/
+build/
+.vite/
+.svelte-kit/
+*.tsbuildinfo
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# --- Environnement / secrets ---
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+# Clés de signature des mises à jour Tauri
+*.tauri.key
+src-tauri/*.key
+
+# --- Claude Code (réglages locaux, propres à chaque poste) ---
+.claude/settings.local.json
+
+# --- IDE ---
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+*.swp
+*.swo
+
+# --- OS ---
+.DS_Store
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+
+# --- Divers ---
+*.log
+coverage/
+tmp/

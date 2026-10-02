@@ -1,0 +1,31 @@
+:root {
+  --notch-bg: #000;
+  --notch-fg: #f2f2f2;
+  --notch-radius: 14px;
+
+  --state-idle: #8a8a8a;
+  --state-working: #c8c8c8;
+  --state-needs-permission: #ff9f0a;
+  --state-waiting-input: #0a84ff;
+  --state-done: #30d158;
+  --state-error: #ff453a;
+
+  font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  font-size: 12px;
+  color: var(--notch-fg);
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  /* The window is transparent: only the notch shape is painted. */
+  background: transparent;
+  user-select: none;
+  cursor: default;
+}
+
+#app {
+  height: 100%;
+}
