@@ -41,6 +41,20 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         sound_enabled,
         None::<&str>,
     )?;
+    let resistance_enabled = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .unwrap()
+        .cursor_resistance;
+    let resistance = CheckMenuItem::with_id(
+        app,
+        "resistance",
+        "Résistance du curseur",
+        cfg!(windows),
+        resistance_enabled,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quitter winotch", true, None::<&str>)?;
     let menu = Menu::with_items(
         app,
@@ -51,6 +65,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
             &disconnect,
             &PredefinedMenuItem::separator(app)?,
             &sound,
+            &resistance,
             &autostart,
             &quit,
         ],
@@ -92,6 +107,16 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 let enabled = !app.state::<AppState>().config.lock().unwrap().sound_enabled;
                 crate::set_sound_enabled(app, enabled);
                 let _ = sound.set_checked(enabled);
+            }
+            "resistance" => {
+                let enabled = !app
+                    .state::<AppState>()
+                    .config
+                    .lock()
+                    .unwrap()
+                    .cursor_resistance;
+                crate::set_cursor_resistance_enabled(app, enabled);
+                let _ = resistance.set_checked(enabled);
             }
             "quit" => app.exit(0),
             _ => {}

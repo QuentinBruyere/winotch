@@ -21,6 +21,8 @@ pub struct Config {
     pub session_timeout_minutes: u64,
     /// Plays a sound when a session needs attention (DF-0003).
     pub sound_enabled: bool,
+    /// Holds the cursor at the notch edge until the user pushes through (DF-0004).
+    pub cursor_resistance: bool,
 }
 
 impl Default for Config {
@@ -30,6 +32,7 @@ impl Default for Config {
             server_port: 47821,
             session_timeout_minutes: 180,
             sound_enabled: true,
+            cursor_resistance: true,
         }
     }
 }

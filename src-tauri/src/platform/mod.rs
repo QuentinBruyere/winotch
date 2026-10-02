@@ -3,7 +3,10 @@
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
-pub use windows::{fullscreen_on_primary, prepare_overlay, set_hit_area};
+pub use windows::{
+    fullscreen_on_primary, prepare_overlay, set_cursor_resistance, set_hit_area,
+    set_resistance_rect,
+};
 
 #[cfg(not(windows))]
 pub fn prepare_overlay(_window: &tauri::WebviewWindow) -> tauri::Result<()> {
@@ -22,3 +25,10 @@ pub fn set_hit_area(window: &tauri::WebviewWindow, width: f64, height: f64) -> t
     window.set_size(tauri::LogicalSize::new(width, height))?;
     crate::notch::place_on_primary_monitor(window)
 }
+
+/// Cursor resistance needs a system-wide mouse hook: Windows only for now.
+#[cfg(not(windows))]
+pub fn set_cursor_resistance(_active: bool) {}
+
+#[cfg(not(windows))]
+pub fn set_resistance_rect(_rect: crate::resistance::Rect) {}

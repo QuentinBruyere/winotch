@@ -2,6 +2,7 @@ mod claude_settings;
 mod config;
 mod notch;
 mod platform;
+mod resistance;
 mod server;
 mod sessions;
 mod tray;
@@ -72,6 +73,18 @@ pub fn set_sound_enabled(app: &AppHandle, enabled: bool) {
     }
     drop(config);
     emit_status(app);
+}
+
+/// Turns the cursor resistance on or off and remembers the choice.
+pub fn set_cursor_resistance_enabled(app: &AppHandle, enabled: bool) {
+    let state = app.state::<AppState>();
+    let mut config = state.config.lock().unwrap();
+    config.cursor_resistance = enabled;
+    if let Err(e) = config::save(&state.config_dir, &config) {
+        log::error!("cannot save config: {e}");
+    }
+    drop(config);
+    notch::update_cursor_resistance(app);
 }
 
 fn status(state: &AppState) -> Status {

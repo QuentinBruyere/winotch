@@ -4,6 +4,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 
+use crate::resistance::Rect;
 use crate::{AppState, NOTCH_LABEL, platform};
 
 /// Visible notch shape in logical pixels, chosen by the front (DF-0003).
@@ -19,7 +20,36 @@ pub fn set_hit_area(window: &WebviewWindow, width: f64, height: f64) -> tauri::R
 /// Re-applies the last shape, e.g. after a DPI change.
 pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
     let (width, height) = *HIT_AREA.lock().unwrap();
-    platform::set_hit_area(window, width, height)
+    platform::set_hit_area(window, width, height)?;
+
+    // Same shape in screen coordinates, for the cursor resistance (DF-0004).
+    let position = window.outer_position()?;
+    let scale = window.scale_factor()?;
+    let window_width = window.inner_size()?.width as i32;
+    let width = (width * scale).round() as i32;
+    let left = position.x + (window_width - width) / 2;
+    platform::set_resistance_rect(Rect {
+        left,
+        top: position.y,
+        right: left + width,
+        bottom: position.y + (height * scale).round() as i32,
+    });
+    Ok(())
+}
+
+/// Cursor resistance runs only while the notch is shown and the option is on.
+pub fn update_cursor_resistance(app: &AppHandle) {
+    let enabled = app
+        .state::<AppState>()
+        .config
+        .lock()
+        .unwrap()
+        .cursor_resistance;
+    let visible = app
+        .get_webview_window(NOTCH_LABEL)
+        .and_then(|w| w.is_visible().ok())
+        .unwrap_or(false);
+    platform::set_cursor_resistance(enabled && visible);
 }
 
 /// Centers the notch horizontally at the very top of the primary monitor.
@@ -76,12 +106,16 @@ pub fn spawn_watcher(app: AppHandle) {
             if let Ok(Some(m)) = window.primary_monitor() {
                 let current = (*m.position(), *m.size());
                 if last_monitor.is_some_and(|last| last != current)
-                    && let Err(e) = place_on_primary_monitor(&window)
+                    && let Err(e) =
+                        place_on_primary_monitor(&window).and_then(|_| apply_hit_area(&window))
                 {
                     log::warn!("failed to reposition notch: {e}");
                 }
                 last_monitor = Some(current);
             }
+
+            // Idempotent: follows visibility changes (fullscreen, tray, setting).
+            update_cursor_resistance(&app);
 
             let now_fullscreen = platform::fullscreen_on_primary();
             if now_fullscreen == fullscreen {
