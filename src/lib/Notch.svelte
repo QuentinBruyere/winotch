@@ -1,21 +1,64 @@
 <script lang="ts">
-  import { stateColor, stateLabels, type SessionState } from './session'
+  import {
+    describe,
+    mostUrgent,
+    projectName,
+    stateColor,
+    stateLabels,
+    type Session,
+    type Status,
+  } from './session'
 
-  let { state }: { state: SessionState } = $props()
+  let {
+    sessions,
+    status,
+    notice,
+    onclick,
+  }: {
+    sessions: Session[]
+    status: Status
+    notice: string | null
+    onclick: () => void
+  } = $props()
+
+  const top = $derived(mostUrgent(sessions))
+
+  // Shown when there is nothing to report about Claude Code itself.
+  const fallback = $derived(
+    status.serverError ??
+      (status.hooksInstalled ? 'Aucune session' : 'Claude Code non connecté'),
+  )
 </script>
 
-<div class="notch">
-  <span
-    class="dot"
-    class:pulse={state === 'working'}
-    style:background={stateColor(state)}
-  ></span>
-  <span class="label">{stateLabels[state]}</span>
-</div>
+<button
+  class="notch"
+  title={sessions.map(describe).join('\n') || fallback}
+  {onclick}
+>
+  {#if notice}
+    <span class="label">{notice}</span>
+  {:else if top}
+    <span class="dots">
+      {#each sessions as session (session.id)}
+        <span
+          class="dot"
+          class:pulse={session.state === 'working'}
+          style:background={stateColor(session.state)}
+        ></span>
+      {/each}
+    </span>
+    <span class="label">{stateLabels[top.state]}</span>
+    <span class="project">{projectName(top)}</span>
+  {:else}
+    <span class="label muted">{fallback}</span>
+  {/if}
+</button>
 
 <style>
   .notch {
+    all: unset;
     box-sizing: border-box;
+    width: 100%;
     height: 100%;
     display: flex;
     align-items: center;
@@ -24,6 +67,12 @@
     padding: 0 16px 2px;
     background: var(--notch-bg);
     border-radius: 0 0 var(--notch-radius) var(--notch-radius);
+  }
+
+  .dots {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
   }
 
   .dot {
@@ -37,10 +86,16 @@
     animation: pulse 1.2s ease-in-out infinite;
   }
 
-  .label {
+  .label,
+  .project {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .project,
+  .muted {
+    opacity: 0.55;
   }
 
   @keyframes pulse {

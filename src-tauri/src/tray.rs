@@ -1,6 +1,6 @@
 use tauri::{
     AppHandle, Manager,
-    menu::{Menu, MenuItem},
+    menu::{Menu, MenuItem, PredefinedMenuItem},
     tray::TrayIconBuilder,
 };
 
@@ -14,8 +14,17 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
         true,
         None::<&str>,
     )?;
+    let connect = MenuItem::with_id(app, "connect", "Connecter Claude Code", true, None::<&str>)?;
+    let disconnect = MenuItem::with_id(
+        app,
+        "disconnect",
+        "Déconnecter Claude Code",
+        true,
+        None::<&str>,
+    )?;
     let quit = MenuItem::with_id(app, "quit", "Quitter winotch", true, None::<&str>)?;
-    let menu = Menu::with_items(app, &[&toggle, &quit])?;
+    let separator = PredefinedMenuItem::separator(app)?;
+    let menu = Menu::with_items(app, &[&toggle, &connect, &disconnect, &separator, &quit])?;
 
     TrayIconBuilder::with_id("main")
         .icon(
@@ -32,6 +41,8 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                     let _ = if visible { w.hide() } else { w.show() };
                 }
             }
+            "connect" => crate::connect_claude_code(app, true),
+            "disconnect" => crate::connect_claude_code(app, false),
             "quit" => app.exit(0),
             _ => {}
         })
