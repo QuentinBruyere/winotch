@@ -109,10 +109,10 @@
               {item.label}{item.detail ? ` · ${item.detail}` : ''}
             </span>
           </li>
-        {:else}
-          {#each notes as note, i (i)}
-            <li class="row"><span class="label muted">{note}</span></li>
-          {/each}
+        {/each}
+        <!-- Modules without items still say how they are (ADR-0009). -->
+        {#each notes as note, i (i)}
+          <li class="row"><span class="label muted note">{note}</span></li>
         {/each}
       </ul>
     {:else if vertical}
@@ -217,6 +217,10 @@
   .list .label {
     margin-left: auto;
     opacity: 0.75;
+  }
+
+  .list .note {
+    margin-left: 0;
   }
 
   .dots {

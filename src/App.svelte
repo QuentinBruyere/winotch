@@ -38,7 +38,7 @@
   // A vertical notch also opens to show notices. In move mode it stays
   // compact, so the shape being dragged does not change under the cursor.
   const expanded = $derived((hovered || alerting) && !notice && !status.movable)
-  const rows = $derived(content.items.length || content.notes.length)
+  const rows = $derived(content.items.length + content.notes.length)
   const wideNotice = $derived(notice !== null && vertical)
   // Opening never makes the notch shorter than its compact shape: a vertical
   // notch (120 px tall) would otherwise shrink to one row (44 px) and leave
