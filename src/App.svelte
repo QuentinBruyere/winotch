@@ -40,12 +40,17 @@
     (hovered || alerting) && !notice && (sessions.length > 0 || vertical),
   )
   const wideNotice = $derived(notice !== null && vertical)
+  // Opening never makes the notch shorter than its compact shape: a vertical
+  // notch (120 px tall) would otherwise shrink to one row (44 px) and leave
+  // the cursor outside, closing it again as soon as its ends are hovered.
   const shape = $derived(
     expanded || wideNotice
       ? {
           width: EXPANDED_WIDTH,
-          height:
+          height: Math.max(
+            compactShape(status.edge).height,
             18 + Math.max(1, Math.min(wideNotice ? 1 : sessions.length, MAX_ROWS)) * ROW_HEIGHT,
+          ),
           radius: EXPANDED_RADIUS,
         }
       : compactShape(status.edge),
