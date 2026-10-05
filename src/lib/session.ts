@@ -27,6 +27,11 @@ export interface Status {
   hooksInstalled: boolean
   soundEnabled: boolean
   edge: Edge
+  // Move mode: the notch can be dragged along its edge (DF-0006)
+  movable: boolean
+  // Center of the compact notch along the edge, from the start of the window,
+  // in logical pixels; null = the middle of the window (DF-0006)
+  anchor: number | null
 }
 
 export const stateLabels: Record<SessionState, string> = {

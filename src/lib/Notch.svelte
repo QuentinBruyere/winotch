@@ -18,9 +18,14 @@
     width,
     height,
     radius,
+    movable,
+    anchor,
     onclick,
     onenter,
     onleave,
+    onpointerdown,
+    onpointermove,
+    onpointerup,
   }: {
     sessions: Session[]
     status: Status
@@ -30,9 +35,14 @@
     width: number
     height: number
     radius: number
+    movable: boolean
+    anchor: number | null
     onclick: () => void
     onenter: () => void
     onleave: () => void
+    onpointerdown: (e: PointerEvent) => void
+    onpointermove: () => void
+    onpointerup: () => void
   } = $props()
 
   const top = $derived(mostUrgent(sessions))
@@ -42,6 +52,26 @@
   const fallback = $derived(
     status.serverError ??
       (status.hooksInstalled ? 'Aucune session' : 'Claude Code non connecté'),
+  )
+
+  // Every shape is centered on the anchor along the edge, then kept inside the
+  // window: at an end of the edge the notch opens towards the other end. Same
+  // rule as `shape_in_window` in src-tauri/src/placement.rs (hit area).
+  let windowWidth = $state(0)
+  let windowHeight = $state(0)
+  const start = $derived.by(() => {
+    const length = vertical ? windowHeight : windowWidth
+    const size = vertical ? height : width
+    const center = anchor ?? length / 2
+    return Math.min(Math.max(center - size / 2, 0), Math.max(length - size, 0))
+  })
+  const position = $derived(
+    {
+      top: `left: ${start}px; top: 0`,
+      bottom: `left: ${start}px; bottom: 0`,
+      left: `top: ${start}px; left: 0`,
+      right: `top: ${start}px; right: 0`,
+    }[edge],
   )
 
   // Rounded corners on the inner side only, the attached side stays square
@@ -56,18 +86,26 @@
   )
 </script>
 
-<!-- The window is larger than the notch: the frame glues the shape to the
-     attached side, it then grows towards the inside of the screen. -->
-<div class="frame {edge}">
+<svelte:window bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} />
+
+<!-- The window is larger than the notch: the shape is glued to the attached
+     side, it then grows towards the inside of the screen. -->
+<div class="frame">
   <button
     class="notch"
     class:vertical={vertical && !expanded && !notice}
+    class:movable
+    style={position}
     style:width="{width}px"
     style:height="{height}px"
     style:border-radius={corners}
     {onclick}
     onmouseenter={onenter}
     onmouseleave={onleave}
+    {onpointerdown}
+    {onpointermove}
+    {onpointerup}
+    onpointercancel={onpointerup}
   >
     {#if notice}
       <span class="row compact"><span class="label">{notice}</span></span>
@@ -124,42 +162,36 @@
 
 <style>
   .frame {
+    position: relative;
     height: 100%;
-    display: flex;
-  }
-
-  .frame.top {
-    justify-content: center;
-    align-items: flex-start;
-  }
-
-  .frame.bottom {
-    justify-content: center;
-    align-items: flex-end;
-  }
-
-  .frame.left {
-    justify-content: flex-start;
-    align-items: center;
-  }
-
-  .frame.right {
-    justify-content: flex-end;
-    align-items: center;
   }
 
   .notch {
     all: unset;
+    position: absolute;
     box-sizing: border-box;
     display: block;
-    flex-shrink: 0;
     overflow: hidden;
     padding: 0 16px;
     background: var(--notch-bg);
     transition:
+      left 250ms ease,
+      top 250ms ease,
       width 250ms ease,
       height 250ms ease,
       border-radius 250ms ease;
+  }
+
+  /* Move mode: a grab cursor and a light outline say the notch can be dragged.
+     No animation: the shape must follow the cursor at once. */
+  .notch.movable {
+    cursor: grab;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.35);
+    transition: none;
+  }
+
+  .notch.movable:active {
+    cursor: grabbing;
   }
 
   .notch.vertical {

@@ -12,6 +12,8 @@
     edge: Edge
     screen: string | null
     screens: { id: string; label: string; primary: boolean }[]
+    movable: boolean
+    offCenter: boolean
     cursorResistance: boolean
     resistanceStrength: Strength
     resistanceAvailable: boolean
@@ -133,7 +135,7 @@
         <div>
           <div class="label">Position du notch</div>
           <div class="hint">
-            Centré sur le bord choisi. À gauche et à droite, le
+            Changer de bord recentre le notch. À gauche et à droite, le
             notch est fin et vertical : il s'ouvre au survol.
           </div>
         </div>
@@ -150,6 +152,27 @@
           {/each}
         </div>
       </div>
+      <label class="row separated">
+        <div>
+          <div class="label">Déplacer le notch</div>
+          <div class="hint">
+            Fais-le glisser le long de son bord ; il s'aimante au centre et aux quarts. Se
+            désactive à la fermeture des paramètres.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          class="switch"
+          checked={settings.movable}
+          onchange={(e) => run('set_movable', { movable: e.currentTarget.checked })}
+        />
+      </label>
+      {#if settings.offCenter}
+        <div class="row">
+          <div class="hint">Le notch n'est plus centré sur son bord.</div>
+          <button onclick={() => run('recenter')}>Recentrer</button>
+        </div>
+      {/if}
       {#if settings.screens.length > 1 || chosenUnplugged}
         <label class="row separated">
           <div>

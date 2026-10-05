@@ -1,10 +1,13 @@
 use std::mem::{size_of, zeroed};
 
 use tauri::WebviewWindow;
+
+use crate::placement::Edge;
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::Graphics::Gdi::{
-    CreateRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO,
-    MonitorFromPoint, MonitorFromWindow, SetWindowRgn,
+    CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, GetMonitorInfoW,
+    MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromPoint,
+    MonitorFromWindow, RGN_OR, SetWindowRgn,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
@@ -99,15 +102,29 @@ pub fn foreground_class() -> String {
 /// repaint flash a resize causes. Coordinates are physical, window-relative.
 pub fn restrict_to_shape(
     window: &WebviewWindow,
-    x: i32,
-    y: i32,
-    width: i32,
-    height: i32,
+    edge: Edge,
+    shape: (i32, i32, i32, i32),
+    radius: i32,
 ) -> tauri::Result<()> {
     let hwnd = window.hwnd()?.0;
+    let (x, y, width, height) = shape;
+    // Square half on the attached side: only the inner corners are rounded.
+    let (sx, sy, sw, sh) = match edge {
+        Edge::Top => (x, y, width, height / 2),
+        Edge::Bottom => (x, y + height / 2, width, height - height / 2),
+        Edge::Left => (x, y, width / 2, height),
+        Edge::Right => (x + width / 2, y, width - width / 2, height),
+    };
     unsafe {
+        // Rounded like the drawn shape, so the corners stay see-through even
+        // when the transparent webview briefly paints its white background.
+        // The +1: round regions exclude their right and bottom edges.
+        let region =
+            CreateRoundRectRgn(x, y, x + width + 1, y + height + 1, 2 * radius, 2 * radius);
+        let square = CreateRectRgn(sx, sy, sx + sw, sy + sh);
+        CombineRgn(region, region, square, RGN_OR);
+        DeleteObject(square);
         // The system owns the region once it is set: no DeleteObject.
-        let region = CreateRectRgn(x, y, x + width, y + height);
         SetWindowRgn(hwnd, region, 1);
     }
     Ok(())
@@ -127,7 +144,6 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
     WM_MOUSEMOVE, WM_QUIT,
 };
 
-use crate::placement::Edge;
 use crate::resistance::{
     Breakthrough, Rect, Resistance, Strength, Verdict, beyond_attached_edge, clip_to_screen_edge,
 };

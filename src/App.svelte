@@ -28,6 +28,8 @@
     hooksInstalled: false,
     soundEnabled: true,
     edge: 'top',
+    movable: false,
+    anchor: null,
   })
   let notice = $state<string | null>(null)
   let hovered = $state(false)
@@ -35,9 +37,13 @@
 
   const vertical = $derived(status.edge === 'left' || status.edge === 'right')
   // A vertical notch shows no text: it may open even without sessions, to
-  // show the connection state, and opens to show notices.
+  // show the connection state, and opens to show notices. In move mode it
+  // stays compact, so the shape being dragged does not change under the cursor.
   const expanded = $derived(
-    (hovered || alerting) && !notice && (sessions.length > 0 || vertical),
+    (hovered || alerting) &&
+      !notice &&
+      !status.movable &&
+      (sessions.length > 0 || vertical),
   )
   const wideNotice = $derived(notice !== null && vertical)
   // Opening never makes the notch shorter than its compact shape: a vertical
@@ -56,6 +62,31 @@
       : compactShape(status.edge),
   )
   const open = $derived(expanded || wideNotice)
+
+  // Dragging in move mode (DF-0006, step 3): the backend reads the cursor
+  // position itself, in physical pixels, so the front only says when. One
+  // move in flight at a time: extra pointer events are dropped.
+  let dragging = false
+  let moving = false
+
+  function startDrag(e: PointerEvent) {
+    if (!status.movable || e.button !== 0) return
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    dragging = true
+    void invoke('start_drag')
+  }
+
+  function drag() {
+    if (!dragging || moving) return
+    moving = true
+    invoke('drag').finally(() => (moving = false))
+  }
+
+  function endDrag() {
+    if (!dragging) return
+    dragging = false
+    void invoke('end_drag')
+  }
 
   let alertTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -123,7 +154,12 @@
   width={shape.width}
   height={shape.height}
   radius={shape.radius}
-  onclick={() => invoke('acknowledge')}
+  movable={status.movable}
+  anchor={status.anchor}
+  onclick={() => !status.movable && invoke('acknowledge')}
+  onpointerdown={startDrag}
+  onpointermove={drag}
+  onpointerup={endDrag}
   onenter={() => (hovered = true)}
   onleave={() => (hovered = false)}
 />

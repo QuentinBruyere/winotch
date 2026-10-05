@@ -10,7 +10,7 @@ mod settings;
 mod tray;
 
 use std::path::PathBuf;
-use std::sync::atomic::AtomicBool;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -33,6 +33,8 @@ pub struct AppState {
     pub server_error: Mutex<Option<String>>,
     /// Hidden from the tray menu: fullscreen detection must not show it back.
     pub user_hidden: AtomicBool,
+    /// Move mode, on while the settings ask for it (DF-0006, step 3).
+    pub movable: AtomicBool,
 }
 
 #[derive(Clone, Serialize)]
@@ -43,6 +45,12 @@ pub struct Status {
     sound_enabled: bool,
     /// Screen edge the notch is attached to: drives its orientation.
     edge: placement::Edge,
+    /// Move mode: the notch can be dragged along its edge.
+    movable: bool,
+    /// Center of the compact notch along the edge, from the start of the
+    /// window, in logical pixels: every shape is centered on it, then kept
+    /// inside the window. `None` = the middle of the window.
+    anchor: Option<f64>,
 }
 
 #[tauri::command]
@@ -74,6 +82,22 @@ fn set_hit_area(
     notch::set_hit_area(&window, width, height, radius).map_err(|e| e.to_string())
 }
 
+/// Dragging the notch in move mode (DF-0006, step 3).
+#[tauri::command]
+fn start_drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    notch::start_drag(&window).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn drag(window: tauri::WebviewWindow) -> Result<(), String> {
+    notch::drag(&window).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn end_drag(app: AppHandle) {
+    notch::end_drag(&app);
+}
+
 fn status(state: &AppState) -> Status {
     // Lock once: temporaries live until the end of the statement, so two
     // `config.lock()` in this struct literal would deadlock the main thread.
@@ -83,6 +107,8 @@ fn status(state: &AppState) -> Status {
         hooks_installed: claude_settings::is_installed(&state.claude_settings),
         sound_enabled: config.sound_enabled,
         edge: config.placement.edge,
+        movable: state.movable.load(Ordering::Relaxed),
+        anchor: notch::anchor(),
     }
 }
 
@@ -112,11 +138,16 @@ pub fn run() {
             get_status,
             acknowledge,
             set_hit_area,
+            start_drag,
+            drag,
+            end_drag,
             settings::get_settings,
             settings::set_sound,
             settings::set_hide_in_fullscreen,
             settings::set_edge,
             settings::set_screen,
+            settings::set_movable,
+            settings::recenter,
             settings::set_cursor_resistance,
             settings::set_session_timeout,
             settings::set_autostart,
@@ -154,6 +185,7 @@ pub fn run() {
                 server: Mutex::new(server),
                 server_error: Mutex::new(server_error),
                 user_hidden: AtomicBool::new(false),
+                movable: AtomicBool::new(false),
             });
             spawn_pruner(app.handle().clone());
 

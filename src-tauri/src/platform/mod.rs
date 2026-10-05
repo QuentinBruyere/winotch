@@ -24,11 +24,11 @@ pub fn fullscreen_on_notch_screen(_notch: &tauri::WebviewWindow) -> bool {
 #[cfg(not(windows))]
 pub fn restrict_to_shape(
     window: &tauri::WebviewWindow,
-    _x: i32,
-    _y: i32,
-    width: i32,
-    height: i32,
+    _edge: crate::placement::Edge,
+    shape: (i32, i32, i32, i32),
+    _radius: i32,
 ) -> tauri::Result<()> {
+    let (_, _, width, height) = shape;
     window.set_size(tauri::PhysicalSize::new(width as u32, height as u32))?;
     crate::notch::place(window)
 }

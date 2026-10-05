@@ -2,6 +2,8 @@
 //! docs/fonctionnel/DF-0005-fenetre-de-parametres.md. Every change is applied
 //! immediately and saved to config.json.
 
+use std::sync::atomic::Ordering;
+
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
@@ -30,6 +32,10 @@ pub struct Settings {
     /// Chosen screen, `None` = the primary one.
     screen: Option<String>,
     screens: Vec<ScreenChoice>,
+    /// Move mode, see `notch::set_movable`.
+    movable: bool,
+    /// The notch is not centered on its edge.
+    off_center: bool,
     cursor_resistance: bool,
     resistance_strength: Strength,
     /// Cursor resistance only exists on Windows for now.
@@ -52,6 +58,8 @@ pub fn current(app: &AppHandle) -> Settings {
         edge: config.placement.edge,
         screen: config.placement.screen.clone(),
         screens: screen_choices(app),
+        movable: state.movable.load(Ordering::Relaxed),
+        off_center: config.placement.offset != 0.5,
         cursor_resistance: config.cursor_resistance,
         resistance_strength: config.cursor_resistance_strength,
         resistance_available: cfg!(windows),
@@ -91,11 +99,18 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
             .min_inner_size(420.0, 480.0)
             .center()
             .build()?;
+    // Move mode only lasts while the settings are open.
+    let handle = app.clone();
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::Destroyed) {
+            notch::set_movable(&handle, false);
+        }
+    });
     platform::bring_to_front(&window)
 }
 
 /// Tells every window (notch included) that settings changed.
-fn changed(app: &AppHandle) {
+pub fn changed(app: &AppHandle) {
     let _ = app.emit("settings-changed", current(app));
     crate::emit_status(app);
 }
@@ -142,6 +157,27 @@ pub fn set_edge(app: AppHandle, edge: Edge) -> Result<(), String> {
 #[tauri::command]
 pub fn set_screen(app: AppHandle, screen: Option<String>) -> Result<(), String> {
     update_config(&app, |c| c.placement.screen = screen);
+    if let Some(window) = app.get_webview_window(crate::NOTCH_LABEL) {
+        notch::place(&window)
+            .and_then(|_| notch::apply_hit_area(&window))
+            .map_err(|e| e.to_string())?;
+    }
+    changed(&app);
+    Ok(())
+}
+
+/// Move mode: the notch can be dragged along its edge while the settings
+/// are open (DF-0006, step 3).
+#[tauri::command]
+pub fn set_movable(app: AppHandle, movable: bool) {
+    notch::set_movable(&app, movable);
+    changed(&app);
+}
+
+/// Puts the notch back in the middle of its edge.
+#[tauri::command]
+pub fn recenter(app: AppHandle) -> Result<(), String> {
+    update_config(&app, |c| c.placement.offset = 0.5);
     if let Some(window) = app.get_webview_window(crate::NOTCH_LABEL) {
         notch::place(&window)
             .and_then(|_| notch::apply_hit_area(&window))
