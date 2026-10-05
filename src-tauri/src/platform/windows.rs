@@ -3,13 +3,12 @@ use std::mem::{size_of, zeroed};
 use tauri::WebviewWindow;
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::Graphics::Gdi::{
-    CreateRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromPoint,
-    MonitorFromWindow, SetWindowRgn,
+    CreateRectRgn, GetMonitorInfoW, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO,
+    MonitorFromPoint, MonitorFromWindow, SetWindowRgn,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
-    MONITORINFOF_PRIMARY, SetWindowLongPtrW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW,
+    SetWindowLongPtrW, WS_CAPTION, WS_EX_APPWINDOW, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 /// Turns the notch into a tool window that never takes focus:
@@ -31,22 +30,25 @@ pub fn prepare_overlay(window: &WebviewWindow) -> tauri::Result<()> {
     Ok(())
 }
 
-/// True when the foreground window covers the whole primary monitor without a
-/// title bar: games, videos, presentations, browsers in F11 mode.
+/// True when the foreground window covers the whole monitor the notch is on,
+/// without a title bar: games, videos, presentations, browsers in F11 mode.
 /// Maximized windows keep their caption, so they do not count.
-pub fn fullscreen_on_primary() -> bool {
+pub fn fullscreen_on_notch_screen(notch: &WebviewWindow) -> bool {
+    let Ok(notch) = notch.hwnd() else {
+        return false;
+    };
     unsafe {
         let hwnd = GetForegroundWindow();
         if hwnd.is_null() || is_shell_window(hwnd) {
             return false;
         }
         let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONULL);
-        if monitor.is_null() {
+        if monitor.is_null() || monitor != MonitorFromWindow(notch.0, MONITOR_DEFAULTTONEAREST) {
             return false;
         }
         let mut info: MONITORINFO = zeroed();
         info.cbSize = size_of::<MONITORINFO>() as u32;
-        if GetMonitorInfoW(monitor, &mut info) == 0 || info.dwFlags & MONITORINFOF_PRIMARY == 0 {
+        if GetMonitorInfoW(monitor, &mut info) == 0 {
             return false;
         }
         let mut rect: RECT = zeroed();

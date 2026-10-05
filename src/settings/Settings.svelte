@@ -10,6 +10,8 @@
     soundEnabled: boolean
     hideInFullscreen: boolean
     edge: Edge
+    screen: string | null
+    screens: { id: string; label: string; primary: boolean }[]
     cursorResistance: boolean
     resistanceStrength: Strength
     resistanceAvailable: boolean
@@ -44,6 +46,14 @@
   let port = $state('')
   let timeout = $state('')
 
+  // The screen shown as selected: the chosen one, or the primary one by default.
+  const selectedScreen = $derived(
+    settings?.screen ?? settings?.screens.find((s) => s.primary)?.id ?? '',
+  )
+  const chosenUnplugged = $derived(
+    !!settings?.screen && !settings.screens.some((s) => s.id === settings?.screen),
+  )
+
   const resistance = $derived<ResistanceChoice>(
     settings?.cursorResistance ? settings.resistanceStrength : 'off',
   )
@@ -72,9 +82,15 @@
 
   $effect(() => {
     const unlisten = listen<Settings>('settings-changed', (e) => load(e.payload))
-    invoke<Settings>('get_settings').then(load)
+    const refresh = () => invoke<Settings>('get_settings').then(load)
+    void refresh()
+    // A monitor may have been plugged in or out while the window was hidden.
+    window.addEventListener('focus', refresh)
     getVersion().then((v) => (version = v))
-    return () => void unlisten.then((off) => off())
+    return () => {
+      window.removeEventListener('focus', refresh)
+      void unlisten.then((off) => off())
+    }
   })
 </script>
 
@@ -117,7 +133,7 @@
         <div>
           <div class="label">Position du notch</div>
           <div class="hint">
-            Centré sur le bord choisi de l'écran principal. À gauche et à droite, le
+            Centré sur le bord choisi. À gauche et à droite, le
             notch est fin et vertical : il s'ouvre au survol.
           </div>
         </div>
@@ -134,6 +150,27 @@
           {/each}
         </div>
       </div>
+      {#if settings.screens.length > 1 || chosenUnplugged}
+        <label class="row separated">
+          <div>
+            <div class="label">Écran</div>
+            <div class="hint">S'il est débranché, le notch revient sur l'écran principal.</div>
+          </div>
+          <select
+            value={selectedScreen}
+            onchange={(e) => run('set_screen', { screen: e.currentTarget.value })}
+          >
+            {#each settings.screens as screen (screen.id)}
+              <option value={screen.id}>{screen.label}</option>
+            {/each}
+            {#if chosenUnplugged}
+              <!-- Only while the chosen screen is unplugged: says why the
+                   notch is on the primary screen for now. -->
+              <option value={settings.screen}>Écran choisi (débranché)</option>
+            {/if}
+          </select>
+        </label>
+      {/if}
       <label class="row separated">
         <div>
           <div class="label">Masquer le notch en plein écran</div>
@@ -422,6 +459,16 @@
     gap: 6px;
   }
 
+  select {
+    font: inherit;
+    max-width: 240px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+  }
+
   input[type='number'] {
     font: inherit;
     width: 76px;
@@ -468,7 +515,8 @@
 
   .switch:focus-visible,
   button:focus-visible,
-  input:focus-visible {
+  input:focus-visible,
+  select:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }

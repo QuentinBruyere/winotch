@@ -6,11 +6,19 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
-use crate::placement::Edge;
+use crate::placement::{self, Edge};
 use crate::resistance::Strength;
 use crate::{AppState, claude_settings, config, notch, platform, server};
 
 pub const SETTINGS_LABEL: &str = "settings";
+
+/// A monitor the notch can go on.
+#[derive(Clone, Serialize)]
+pub struct ScreenChoice {
+    id: String,
+    label: String,
+    primary: bool,
+}
 
 /// Everything the settings window displays.
 #[derive(Clone, Serialize)]
@@ -19,6 +27,9 @@ pub struct Settings {
     sound_enabled: bool,
     hide_in_fullscreen: bool,
     edge: Edge,
+    /// Chosen screen, `None` = the primary one.
+    screen: Option<String>,
+    screens: Vec<ScreenChoice>,
     cursor_resistance: bool,
     resistance_strength: Strength,
     /// Cursor resistance only exists on Windows for now.
@@ -39,6 +50,8 @@ pub fn current(app: &AppHandle) -> Settings {
         sound_enabled: config.sound_enabled,
         hide_in_fullscreen: config.hide_in_fullscreen,
         edge: config.placement.edge,
+        screen: config.placement.screen.clone(),
+        screens: screen_choices(app),
         cursor_resistance: config.cursor_resistance,
         resistance_strength: config.cursor_resistance_strength,
         resistance_available: cfg!(windows),
@@ -50,6 +63,18 @@ pub fn current(app: &AppHandle) -> Settings {
         claude_settings_path: state.claude_settings.display().to_string(),
         config_dir: state.config_dir.display().to_string(),
     }
+}
+
+fn screen_choices(app: &AppHandle) -> Vec<ScreenChoice> {
+    let screens = crate::notch::screens(app).unwrap_or_default();
+    placement::screen_labels(&screens)
+        .into_iter()
+        .map(|(id, label)| ScreenChoice {
+            primary: screens.iter().any(|s| s.id == id && s.primary),
+            id,
+            label,
+        })
+        .collect()
 }
 
 /// Opens the settings window, or brings it back to the front.
@@ -103,6 +128,20 @@ pub fn set_edge(app: AppHandle, edge: Edge) -> Result<(), String> {
         c.placement.offset = 0.5;
     });
     notch::reset_hit_area();
+    if let Some(window) = app.get_webview_window(crate::NOTCH_LABEL) {
+        notch::place(&window)
+            .and_then(|_| notch::apply_hit_area(&window))
+            .map_err(|e| e.to_string())?;
+    }
+    changed(&app);
+    Ok(())
+}
+
+/// Moves the notch to another monitor, `None` = the primary one (DF-0006).
+/// An unplugged monitor falls back to the primary one until it comes back.
+#[tauri::command]
+pub fn set_screen(app: AppHandle, screen: Option<String>) -> Result<(), String> {
+    update_config(&app, |c| c.placement.screen = screen);
     if let Some(window) = app.get_webview_window(crate::NOTCH_LABEL) {
         notch::place(&window)
             .and_then(|_| notch::apply_hit_area(&window))

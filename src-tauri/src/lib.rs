@@ -116,6 +116,7 @@ pub fn run() {
             settings::set_sound,
             settings::set_hide_in_fullscreen,
             settings::set_edge,
+            settings::set_screen,
             settings::set_cursor_resistance,
             settings::set_session_timeout,
             settings::set_autostart,

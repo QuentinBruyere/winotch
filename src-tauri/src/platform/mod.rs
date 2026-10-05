@@ -4,8 +4,9 @@
 mod windows;
 #[cfg(windows)]
 pub use windows::{
-    bring_to_front, foreground_class, fullscreen_on_primary, prepare_overlay, restrict_to_shape,
-    set_cursor_resistance, set_resistance_rect, set_resistance_strength, take_breakthrough,
+    bring_to_front, foreground_class, fullscreen_on_notch_screen, prepare_overlay,
+    restrict_to_shape, set_cursor_resistance, set_resistance_rect, set_resistance_strength,
+    take_breakthrough,
 };
 
 #[cfg(not(windows))]
@@ -15,7 +16,7 @@ pub fn prepare_overlay(_window: &tauri::WebviewWindow) -> tauri::Result<()> {
 
 /// Not implemented yet outside Windows: the notch never auto-hides there.
 #[cfg(not(windows))]
-pub fn fullscreen_on_primary() -> bool {
+pub fn fullscreen_on_notch_screen(_notch: &tauri::WebviewWindow) -> bool {
     false
 }
 

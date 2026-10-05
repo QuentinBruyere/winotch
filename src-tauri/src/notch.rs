@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 
-use crate::placement::{self, Area, Edge, Placement};
+use crate::placement::{self, Area, Edge, Placement, Screen};
 use crate::resistance::Rect;
 use crate::{AppState, NOTCH_LABEL, platform};
 
@@ -31,6 +31,7 @@ fn current_placement(window: &WebviewWindow) -> Placement {
         .lock()
         .unwrap()
         .placement
+        .clone()
 }
 
 /// Records the visible shape and restricts the window to it.
@@ -97,29 +98,53 @@ pub fn update_cursor_resistance(app: &AppHandle) {
     platform::set_cursor_resistance(enabled && visible);
 }
 
-/// Work area (screen minus taskbar) of the monitor holding the notch.
+/// All connected monitors, in physical pixels.
+pub fn screens(app: &AppHandle) -> tauri::Result<Vec<Screen>> {
+    let primary = app.primary_monitor()?.and_then(|m| m.name().cloned());
+    Ok(app
+        .available_monitors()?
+        .into_iter()
+        .map(|m| {
+            let (position, size, wa) = (m.position(), m.size(), m.work_area());
+            let id = m.name().cloned().unwrap_or_default();
+            Screen {
+                primary: primary.as_ref() == Some(&id),
+                id,
+                bounds: Area {
+                    x: position.x,
+                    y: position.y,
+                    width: size.width as i32,
+                    height: size.height as i32,
+                },
+                work_area: Area {
+                    x: wa.position.x,
+                    y: wa.position.y,
+                    width: wa.size.width as i32,
+                    height: wa.size.height as i32,
+                },
+            }
+        })
+        .collect())
+}
+
+/// Work area (screen minus taskbar) of the screen chosen for the notch, or
+/// of the primary one if it is not connected (DF-0006, step 2).
 fn work_area(window: &WebviewWindow) -> tauri::Result<Option<Area>> {
-    Ok(window.primary_monitor()?.map(|m| {
-        let wa = m.work_area();
-        Area {
-            x: wa.position.x,
-            y: wa.position.y,
-            width: wa.size.width as i32,
-            height: wa.size.height as i32,
-        }
-    }))
+    let screens = screens(window.app_handle())?;
+    let wanted = current_placement(window).screen;
+    Ok(placement::choose_screen(&screens, wanted.as_deref()).map(|s| s.work_area))
 }
 
 /// Glues the notch window to the chosen edge of the work area
 /// (DF-0006). Physical pixels, so it stays right at any DPI scaling.
 pub fn place(window: &WebviewWindow) -> tauri::Result<()> {
     let Some(area) = work_area(window)? else {
-        log::warn!("no primary monitor found, notch left where it is");
+        log::warn!("no monitor found, notch left where it is");
         return Ok(());
     };
     let size = window.outer_size()?;
     let (x, y) = placement::window_position(
-        current_placement(window),
+        &current_placement(window),
         area,
         (size.width as i32, size.height as i32),
     );
@@ -195,14 +220,15 @@ pub fn spawn_watcher(app: AppHandle) {
                 .lock()
                 .unwrap()
                 .hide_in_fullscreen;
-            let now_fullscreen = hide_in_fullscreen && platform::fullscreen_on_primary();
+            let now_fullscreen =
+                hide_in_fullscreen && platform::fullscreen_on_notch_screen(&window);
             if now_fullscreen == fullscreen {
                 continue;
             }
             fullscreen = now_fullscreen;
             if fullscreen {
                 log::info!(
-                    "fullscreen app on primary monitor ({}): notch hidden",
+                    "fullscreen app on the notch screen ({}): notch hidden",
                     platform::foreground_class()
                 );
             } else {
