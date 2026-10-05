@@ -5,12 +5,14 @@
 use std::sync::atomic::Ordering;
 
 use serde::Serialize;
+use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
+use crate::module::Host;
 use crate::placement::{self, Edge};
 use crate::resistance::Strength;
-use crate::{AppState, claude_settings, config, notch, platform, server};
+use crate::{AppState, config, notch, platform};
 
 pub const SETTINGS_LABEL: &str = "settings";
 
@@ -20,6 +22,17 @@ pub struct ScreenChoice {
     id: String,
     label: String,
     primary: bool,
+}
+
+/// A module and its section of the settings window (ADR-0009).
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ModuleInfo {
+    id: String,
+    name: String,
+    enabled: bool,
+    /// The module's own data, read by its settings component.
+    settings: Value,
 }
 
 /// Everything the settings window displays.
@@ -40,12 +53,8 @@ pub struct Settings {
     resistance_strength: Strength,
     /// Cursor resistance only exists on Windows for now.
     resistance_available: bool,
-    server_port: u16,
-    session_timeout_minutes: u64,
     autostart: bool,
-    hooks_installed: bool,
-    server_error: Option<String>,
-    claude_settings_path: String,
+    modules: Vec<ModuleInfo>,
     config_dir: String,
 }
 
@@ -63,12 +72,20 @@ pub fn current(app: &AppHandle) -> Settings {
         cursor_resistance: config.cursor_resistance,
         resistance_strength: config.cursor_resistance_strength,
         resistance_available: cfg!(windows),
-        server_port: config.server_port,
-        session_timeout_minutes: config.session_timeout_minutes,
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
-        hooks_installed: claude_settings::is_installed(&state.claude_settings),
-        server_error: state.server_error.lock().unwrap().clone(),
-        claude_settings_path: state.claude_settings.display().to_string(),
+        modules: state
+            .modules
+            .iter()
+            .map(|m| {
+                let enabled = config.module_enabled(m.id());
+                ModuleInfo {
+                    id: m.id().into(),
+                    name: m.name().into(),
+                    enabled,
+                    settings: if enabled { m.settings() } else { Value::Null },
+                }
+            })
+            .collect(),
         config_dir: state.config_dir.display().to_string(),
     }
 }
@@ -115,7 +132,7 @@ pub fn changed(app: &AppHandle) {
     crate::emit_status(app);
 }
 
-fn update_config(app: &AppHandle, edit: impl FnOnce(&mut config::Config)) {
+pub(crate) fn update_config(app: &AppHandle, edit: impl FnOnce(&mut config::Config)) {
     let state = app.state::<AppState>();
     let mut config = state.config.lock().unwrap();
     edit(&mut config);
@@ -206,16 +223,6 @@ pub fn set_cursor_resistance(app: AppHandle, enabled: bool, strength: Strength) 
 }
 
 #[tauri::command]
-pub fn set_session_timeout(app: AppHandle, minutes: u64) -> Result<(), String> {
-    if !(5..=1440).contains(&minutes) {
-        return Err("Entre 5 et 1440 minutes".into());
-    }
-    update_config(&app, |c| c.session_timeout_minutes = minutes);
-    changed(&app);
-    Ok(())
-}
-
-#[tauri::command]
 pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     let launcher = app.autolaunch();
     let result = if enabled {
@@ -227,61 +234,47 @@ pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     result.map_err(|e| e.to_string())
 }
 
+/// Turns a module on or off; a disabled module does not run at all.
 #[tauri::command]
-pub fn set_claude_connected(app: AppHandle, connected: bool) -> Result<(), String> {
-    let result = connect_claude_code(&app, connected);
-    changed(&app);
-    result
-}
-
-/// Moves the hook server to another port without restarting winotch: the new
-/// port is opened first, so a busy port leaves everything as it was.
-#[tauri::command]
-pub fn set_server_port(app: AppHandle, port: u16) -> Result<(), String> {
-    if port < 1024 {
-        return Err("Choisis un port entre 1024 et 65535".into());
-    }
+pub fn set_module_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(), String> {
     let state = app.state::<AppState>();
-    let current_port = state.config.lock().unwrap().server_port;
-    let running = state.server.lock().unwrap().is_some();
-    if port == current_port && running {
-        return Ok(());
-    }
-    let new_server = server::start(app.clone(), port, state.token.clone())
-        .map_err(|e| format!("Port {port} indisponible : {e}"))?;
-    if let Some(old) = state.server.lock().unwrap().replace(new_server) {
-        old.unblock();
-    }
-    *state.server_error.lock().unwrap() = None;
-    update_config(&app, |c| c.server_port = port);
-
-    // The hooks contain the port: follow the change if Claude Code is connected.
-    let result = if claude_settings::is_installed(&state.claude_settings) {
-        connect_claude_code(&app, true)
-    } else {
-        Ok(())
-    };
-    changed(&app);
-    result
-}
-
-/// Adds (`true`) or removes (`false`) winotch's hooks in the Claude Code settings.
-pub fn connect_claude_code(app: &AppHandle, connect: bool) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let result = if connect {
-        let port = state.config.lock().unwrap().server_port;
-        claude_settings::install(&state.claude_settings, port, &state.token)
-    } else {
-        claude_settings::uninstall(&state.claude_settings)
-    };
-    let message = match &result {
-        Ok(()) if connect => "Claude Code connecté",
-        Ok(()) => "Claude Code déconnecté",
-        Err(e) => {
-            log::error!("cannot update {}: {e}", state.claude_settings.display());
-            "Échec : voir les logs"
+    let module = state
+        .modules
+        .iter()
+        .find(|m| m.id() == id)
+        .ok_or_else(|| format!("module inconnu : {id}"))?;
+    let was_enabled = state.config.lock().unwrap().module_enabled(&id);
+    if was_enabled != enabled {
+        update_config(&app, |c| {
+            c.modules.entry(id.clone()).or_default().enabled = enabled
+        });
+        if enabled {
+            module.start(&Host::new(app.clone(), module.id()));
+        } else {
+            module.stop();
         }
-    };
-    let _ = app.emit("notice", message);
-    result.map_err(|e| e.to_string())
+    }
+    changed(&app);
+    crate::emit_content(&app);
+    Ok(())
+}
+
+/// Action of a module's settings section, handled by the module itself.
+#[tauri::command]
+pub fn module_call(
+    app: AppHandle,
+    id: String,
+    action: String,
+    args: Option<Value>,
+) -> Result<Value, String> {
+    let state = app.state::<AppState>();
+    let module = state
+        .modules
+        .iter()
+        .find(|m| m.id() == id)
+        .ok_or_else(|| format!("module inconnu : {id}"))?;
+    if !state.config.lock().unwrap().module_enabled(&id) {
+        return Err(format!("{} est désactivé", module.name()));
+    }
+    module.call(&action, args.unwrap_or(Value::Null))
 }

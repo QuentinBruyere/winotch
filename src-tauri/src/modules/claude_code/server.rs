@@ -2,20 +2,22 @@
 
 use std::io::Read;
 use std::sync::Arc;
-use std::time::Instant;
 
-use tauri::{AppHandle, Manager};
 use tiny_http::{Header, Method, Response, Server};
 
-use crate::AppState;
-use crate::claude_settings::HOOK_PATH;
-use crate::sessions::HookEvent;
+use super::hooks::HOOK_PATH;
+use super::sessions::HookEvent;
 
 /// Hook payloads embed tool inputs (whole files for `Write`): cap what we read.
 const MAX_BODY: u64 = 16 * 1024 * 1024;
 
 /// Starts listening on `port`. The returned handle stops the server with `unblock()`.
-pub fn start(app: AppHandle, port: u16, token: String) -> Result<Arc<Server>, String> {
+/// `on_event` runs on the server thread for every authorized hook event.
+pub fn start(
+    port: u16,
+    token: &str,
+    on_event: impl Fn(&HookEvent) + Send + 'static,
+) -> Result<Arc<Server>, String> {
     let server = Arc::new(Server::http(("127.0.0.1", port)).map_err(|e| e.to_string())?);
     log::info!("hook server listening on 127.0.0.1:{port}");
     let expected = format!("Bearer {token}");
@@ -35,7 +37,7 @@ pub fn start(app: AppHandle, port: u16, token: String) -> Result<Arc<Server>, St
                         .and_then(|_| serde_json::from_slice::<HookEvent>(&body).ok())
                     {
                         Some(event) => {
-                            handle(&app, &event);
+                            on_event(&event);
                             200
                         }
                         None => 400,
@@ -57,12 +59,4 @@ fn authorized(request: &tiny_http::Request, expected: &str) -> bool {
         .iter()
         .find(|h: &&Header| h.field.equiv("Authorization"))
         .is_some_and(|h| h.value.as_str() == expected)
-}
-
-fn handle(app: &AppHandle, event: &HookEvent) {
-    let state = app.state::<AppState>();
-    let changed = state.sessions.lock().unwrap().apply(event, Instant::now());
-    if changed {
-        crate::emit_sessions(app);
-    }
 }

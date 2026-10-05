@@ -1,27 +1,25 @@
 //! Per-user configuration, see docs/adr/0006-configuration-et-secrets.md.
 //! Lives in the OS config dir; a missing or broken file falls back to defaults.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::Path;
 
 use serde::{Deserialize, Serialize};
+use serde_json::{Map, Value};
 
 use crate::placement::Placement;
 use crate::resistance::Strength;
 
 const CONFIG_FILE: &str = "config.json";
-const TOKEN_FILE: &str = "hook-token";
-const SCHEMA_VERSION: u32 = 1;
+/// 2: module settings moved under `modules` (ADR-0009).
+const SCHEMA_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Config {
     pub schema_version: u32,
-    /// Local port the Claude Code hooks post to (127.0.0.1 only).
-    pub server_port: u16,
-    /// Sessions silent for this long are considered dead and removed.
-    pub session_timeout_minutes: u64,
     /// Plays a sound when a session needs attention (DF-0003).
     pub sound_enabled: bool,
     /// Holds the cursor at the notch edge until the user pushes through (DF-0004).
@@ -31,19 +29,45 @@ pub struct Config {
     pub hide_in_fullscreen: bool,
     /// Where the notch sits on screen (DF-0006).
     pub placement: Placement,
+    /// Per module, by module id (ADR-0009).
+    pub modules: BTreeMap<String, ModuleEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ModuleEntry {
+    pub enabled: bool,
+    /// The module's own settings, read and written by the module.
+    #[serde(flatten)]
+    pub settings: Map<String, Value>,
+}
+
+impl Default for ModuleEntry {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            settings: Map::new(),
+        }
+    }
+}
+
+impl Config {
+    /// Modules are enabled until the user disables them.
+    pub fn module_enabled(&self, id: &str) -> bool {
+        self.modules.get(id).is_none_or(|m| m.enabled)
+    }
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
-            server_port: 47821,
-            session_timeout_minutes: 180,
             sound_enabled: true,
             cursor_resistance: true,
             cursor_resistance_strength: Strength::default(),
             hide_in_fullscreen: true,
             placement: Placement::default(),
+            modules: BTreeMap::new(),
         }
     }
 }
@@ -52,11 +76,22 @@ impl Default for Config {
 pub fn load_or_create(dir: &Path) -> Config {
     let path = dir.join(CONFIG_FILE);
     match fs::read_to_string(&path) {
-        Ok(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
+        Ok(text) => match serde_json::from_str::<Value>(&text).and_then(|v| {
+            let outdated = schema_version(&v) < SCHEMA_VERSION;
+            serde_json::from_value::<Config>(migrate(v)).map(|c| (c, outdated))
+        }) {
+            Ok((config, outdated)) => {
+                if outdated && let Err(e) = save(dir, &config) {
+                    log::warn!("cannot save migrated config: {e}");
+                }
+                config
+            }
             // Keep the user's file untouched so they can fix it.
-            log::warn!("invalid {}: {e}, using defaults", path.display());
-            Config::default()
-        }),
+            Err(e) => {
+                log::warn!("invalid {}: {e}, using defaults", path.display());
+                Config::default()
+            }
+        },
         Err(e) if e.kind() == io::ErrorKind::NotFound => {
             let config = Config::default();
             if let Err(e) = write_json(dir, CONFIG_FILE, &config) {
@@ -75,25 +110,79 @@ pub fn save(dir: &Path, config: &Config) -> io::Result<()> {
     write_json(dir, CONFIG_FILE, config)
 }
 
-/// Token guarding the local hook server, generated once per installation.
-pub fn load_or_create_token(dir: &Path) -> io::Result<String> {
-    let path = dir.join(TOKEN_FILE);
-    if let Ok(token) = fs::read_to_string(&path) {
-        let token = token.trim();
-        if token.len() >= 32 {
-            return Ok(token.to_owned());
+/// Files written before `schemaVersion` existed count as version 1.
+fn schema_version(value: &Value) -> u32 {
+    value
+        .get("schemaVersion")
+        .and_then(Value::as_u64)
+        .map_or(1, |v| v as u32)
+}
+
+/// Brings an older config.json up to the current schema.
+fn migrate(mut value: Value) -> Value {
+    let version = schema_version(&value);
+    let Some(root) = value.as_object_mut() else {
+        return value;
+    };
+    if version < 2 {
+        // Claude Code became a module: its settings left the root.
+        let mut claude = Map::new();
+        for key in ["serverPort", "sessionTimeoutMinutes"] {
+            if let Some(v) = root.remove(key) {
+                claude.insert(key.into(), v);
+            }
+        }
+        if !claude.is_empty() {
+            let modules = root
+                .entry("modules")
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Some(modules) = modules.as_object_mut() {
+                modules.insert("claude-code".into(), Value::Object(claude));
+            }
         }
     }
-    let mut bytes = [0u8; 32];
-    getrandom::fill(&mut bytes).map_err(|e| io::Error::other(e.to_string()))?;
-    let token: String = bytes.iter().map(|b| format!("{b:02x}")).collect();
-    fs::create_dir_all(dir)?;
-    fs::write(&path, &token)?;
-    Ok(token)
+    root.insert("schemaVersion".into(), SCHEMA_VERSION.into());
+    value
 }
 
 fn write_json<T: Serialize>(dir: &Path, name: &str, value: &T) -> io::Result<()> {
     fs::create_dir_all(dir)?;
     let text = serde_json::to_string_pretty(value).map_err(io::Error::other)?;
     fs::write(dir.join(name), text + "\n")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn version_1_moves_claude_code_settings_to_its_module() {
+        let old = json!({
+            "schemaVersion": 1,
+            "serverPort": 50000,
+            "sessionTimeoutMinutes": 60,
+            "soundEnabled": false
+        });
+        let config: Config = serde_json::from_value(migrate(old)).unwrap();
+        assert_eq!(config.schema_version, SCHEMA_VERSION);
+        assert!(!config.sound_enabled);
+        let claude = &config.modules["claude-code"];
+        assert!(claude.enabled);
+        assert_eq!(claude.settings["serverPort"], json!(50000));
+        assert_eq!(claude.settings["sessionTimeoutMinutes"], json!(60));
+    }
+
+    #[test]
+    fn current_version_is_left_alone() {
+        let current = json!({
+            "schemaVersion": SCHEMA_VERSION,
+            "serverPort": 50000,
+            "modules": { "claude-code": { "enabled": false } }
+        });
+        let config: Config = serde_json::from_value(migrate(current)).unwrap();
+        assert!(!config.module_enabled("claude-code"));
+        assert!(config.modules["claude-code"].settings.is_empty());
+        assert!(config.module_enabled("other"));
+    }
 }

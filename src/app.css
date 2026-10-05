@@ -3,12 +3,12 @@
   --notch-fg: #f2f2f2;
   --notch-radius: 14px;
 
-  --state-idle: #8a8a8a;
-  --state-working: #c8c8c8;
-  --state-needs-permission: #ff9f0a;
-  --state-waiting-input: #0a84ff;
-  --state-done: #30d158;
-  --state-error: #ff453a;
+  --tone-neutral: #8a8a8a;
+  --tone-active: #c8c8c8;
+  --tone-attention: #ff9f0a;
+  --tone-question: #0a84ff;
+  --tone-success: #30d158;
+  --tone-error: #ff453a;
 
   font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 12px;

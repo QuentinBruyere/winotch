@@ -2,6 +2,8 @@
   import { getVersion } from '@tauri-apps/api/app'
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
+  import { settingsComponents } from '../modules'
+  import './settings.css'
 
   // Mirrors `Settings` in src-tauri/src/settings.rs
   type Strength = 'soft' | 'medium' | 'strong'
@@ -20,9 +22,7 @@
     serverPort: number
     sessionTimeoutMinutes: number
     autostart: boolean
-    hooksInstalled: boolean
-    serverError: string | null
-    claudeSettingsPath: string
+    modules: { id: string; name: string; enabled: boolean; settings: unknown }[]
     configDir: string
   }
 
@@ -44,9 +44,6 @@
   let settings = $state<Settings | null>(null)
   let version = $state('')
   let error = $state<string | null>(null)
-  // Text fields are edited locally and applied on demand.
-  let port = $state('')
-  let timeout = $state('')
 
   // The screen shown as selected: the chosen one, or the primary one by default.
   const selectedScreen = $derived(
@@ -62,8 +59,6 @@
 
   function load(next: Settings) {
     settings = next
-    port = String(next.serverPort)
-    timeout = String(next.sessionTimeoutMinutes)
   }
 
   async function run(command: string, args: Record<string, unknown> = {}) {
@@ -107,27 +102,28 @@
   {/if}
 
   {#if settings}
-    <section>
-      <h2>Claude Code</h2>
-      <div class="row">
-        <div>
-          <div class="label">
-            <span class="status" class:on={settings.hooksInstalled}></span>
-            {settings.hooksInstalled ? 'Connecté' : 'Non connecté'}
-          </div>
-          <div class="hint">Hooks dans {settings.claudeSettingsPath}</div>
-        </div>
-        <button
-          class:primary={!settings.hooksInstalled}
-          onclick={() => run('set_claude_connected', { connected: !settings?.hooksInstalled })}
-        >
-          {settings.hooksInstalled ? 'Déconnecter' : 'Connecter'}
-        </button>
-      </div>
-      {#if settings.serverError}
-        <p class="error">{settings.serverError} : change le port dans la section Avancé.</p>
-      {/if}
-    </section>
+    {#each settings.modules as module (module.id)}
+      {@const ModuleSettings = settingsComponents[module.id]}
+      <section>
+        <h2>{module.name}</h2>
+        <label class="row">
+          <div class="label">Activé</div>
+          <input
+            type="checkbox"
+            class="switch"
+            checked={module.enabled}
+            onchange={(e) =>
+              run('set_module_enabled', { id: module.id, enabled: e.currentTarget.checked })}
+          />
+        </label>
+        {#if module.enabled && ModuleSettings}
+          <ModuleSettings
+            data={module.settings}
+            call={(action, args) => run('module_call', { id: module.id, action, args })}
+          />
+        {/if}
+      </section>
+    {/each}
 
     <section>
       <h2>Affichage</h2>
@@ -273,274 +269,7 @@
 
     <section>
       <h2>Avancé</h2>
-      <form
-        class="row"
-        onsubmit={(e) => {
-          e.preventDefault()
-          void run('set_server_port', { port: Number(port) })
-        }}
-      >
-        <div>
-          <div class="label">Port du serveur local</div>
-          <div class="hint">Claude Code est reconnecté automatiquement.</div>
-        </div>
-        <div class="field">
-          <input type="number" min="1024" max="65535" bind:value={port} />
-          <button disabled={port === String(settings.serverPort)}>Appliquer</button>
-        </div>
-      </form>
-      <form
-        class="row"
-        onsubmit={(e) => {
-          e.preventDefault()
-          void run('set_session_timeout', { minutes: Number(timeout) })
-        }}
-      >
-        <div>
-          <div class="label">Oublier une session inactive après</div>
-          <div class="hint">En minutes, si son terminal a été fermé brutalement.</div>
-        </div>
-        <div class="field">
-          <input type="number" min="5" max="1440" bind:value={timeout} />
-          <button disabled={timeout === String(settings.sessionTimeoutMinutes)}>Appliquer</button>
-        </div>
-      </form>
       <p class="hint path">Configuration : {settings.configDir}</p>
     </section>
   {/if}
 </main>
-
-<style>
-  :global(html[data-window='settings']) {
-    --bg: #f4f4f6;
-    --card: #ffffff;
-    --text: #1c1c1e;
-    --muted: #6e6e73;
-    --border: #e2e2e7;
-    --accent: #0a84ff;
-    --accent-text: #ffffff;
-    --danger: #d70015;
-    color-scheme: light;
-    color: var(--text);
-    font-size: 13px;
-  }
-
-  @media (prefers-color-scheme: dark) {
-    :global(html[data-window='settings']) {
-      --bg: #1c1c1e;
-      --card: #2c2c2e;
-      --text: #f2f2f7;
-      --muted: #98989f;
-      --border: #3a3a3c;
-      --danger: #ff6961;
-      color-scheme: dark;
-    }
-  }
-
-  :global(html[data-window='settings'] body) {
-    background: var(--bg);
-  }
-
-  main {
-    max-width: 560px;
-    margin: 0 auto;
-    padding: 20px 20px 28px;
-    display: grid;
-    gap: 14px;
-  }
-
-  header {
-    display: flex;
-    align-items: baseline;
-    gap: 8px;
-  }
-
-  h1 {
-    margin: 0;
-    font-size: 20px;
-  }
-
-  h2 {
-    margin: 0 0 10px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-
-  section {
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
-  }
-
-  .row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-  }
-
-  .row + .row,
-  .separated {
-    margin-top: 14px;
-    padding-top: 14px;
-    border-top: 1px solid var(--border);
-  }
-
-  .stack {
-    display: grid;
-    gap: 10px;
-  }
-
-  .label {
-    font-weight: 500;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-
-  .hint,
-  .version {
-    color: var(--muted);
-    font-size: 12px;
-    margin-top: 2px;
-  }
-
-  .path {
-    margin: 14px 0 0;
-    word-break: break-all;
-  }
-
-  .status {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--muted);
-  }
-
-  .status.on {
-    background: #30d158;
-  }
-
-  .error {
-    margin: 10px 0 0;
-    color: var(--danger);
-  }
-
-  main > .error {
-    margin: 0;
-  }
-
-  button {
-    font: inherit;
-    padding: 6px 12px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--card);
-    color: var(--text);
-    cursor: pointer;
-    white-space: nowrap;
-  }
-
-  button:disabled {
-    opacity: 0.5;
-    cursor: default;
-  }
-
-  button.primary {
-    background: var(--accent);
-    border-color: var(--accent);
-    color: var(--accent-text);
-  }
-
-  .segmented {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    padding: 2px;
-    border-radius: 8px;
-    background: var(--bg);
-    border: 1px solid var(--border);
-  }
-
-  .segmented button {
-    border: none;
-    background: transparent;
-    padding: 6px 4px;
-  }
-
-  .segmented button.selected {
-    background: var(--card);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
-    font-weight: 600;
-  }
-
-  .field {
-    display: flex;
-    gap: 6px;
-  }
-
-  select {
-    font: inherit;
-    max-width: 240px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--text);
-  }
-
-  input[type='number'] {
-    font: inherit;
-    width: 76px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--text);
-  }
-
-  .switch {
-    appearance: none;
-    flex-shrink: 0;
-    width: 38px;
-    height: 22px;
-    margin: 0;
-    border-radius: 11px;
-    background: var(--border);
-    position: relative;
-    cursor: pointer;
-    transition: background-color 150ms ease;
-  }
-
-  .switch::after {
-    content: '';
-    position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-    transition: transform 150ms ease;
-  }
-
-  .switch:checked {
-    background: #30d158;
-  }
-
-  .switch:checked::after {
-    transform: translateX(16px);
-  }
-
-  .switch:focus-visible,
-  button:focus-visible,
-  input:focus-visible,
-  select:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
-</style>

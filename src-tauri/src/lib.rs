@@ -1,36 +1,29 @@
-mod claude_settings;
 mod config;
+pub mod module;
+pub mod modules;
 mod notch;
 mod placement;
 mod platform;
 mod resistance;
-mod server;
-mod sessions;
 mod settings;
 mod tray;
 
 use std::path::PathBuf;
+use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 
 use config::Config;
-use sessions::{Session, SessionStore};
+use module::{Content, Host, Module};
 
 pub const NOTCH_LABEL: &str = "notch";
 
 pub struct AppState {
-    pub sessions: Mutex<SessionStore>,
+    pub modules: Vec<Box<dyn Module>>,
     pub config: Mutex<Config>,
     pub config_dir: PathBuf,
-    pub token: String,
-    pub claude_settings: PathBuf,
-    /// Running hook server; replaced when the port changes.
-    pub server: Mutex<Option<Arc<tiny_http::Server>>>,
-    pub server_error: Mutex<Option<String>>,
     /// Hidden from the tray menu: fullscreen detection must not show it back.
     pub user_hidden: AtomicBool,
     /// Move mode, on while the settings ask for it (DF-0006, step 3).
@@ -40,8 +33,6 @@ pub struct AppState {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Status {
-    server_error: Option<String>,
-    hooks_installed: bool,
     sound_enabled: bool,
     /// Screen edge the notch is attached to: drives its orientation.
     edge: placement::Edge,
@@ -54,8 +45,8 @@ pub struct Status {
 }
 
 #[tauri::command]
-fn get_sessions(state: tauri::State<AppState>) -> Vec<Session> {
-    state.sessions.lock().unwrap().list()
+fn get_content(state: tauri::State<AppState>) -> Content {
+    content(&state)
 }
 
 #[tauri::command]
@@ -63,11 +54,16 @@ fn get_status(state: tauri::State<AppState>) -> Status {
     status(&state)
 }
 
-/// Clicking the notch means the user has seen the finished sessions.
+/// Clicking the notch means the user has seen what it shows.
 #[tauri::command]
-fn acknowledge(app: AppHandle, state: tauri::State<AppState>) {
-    if state.sessions.lock().unwrap().acknowledge() {
-        emit_sessions(&app);
+fn acknowledge(state: tauri::State<AppState>) {
+    let config = state.config.lock().unwrap().clone();
+    for module in state
+        .modules
+        .iter()
+        .filter(|m| config.module_enabled(m.id()))
+    {
+        module.acknowledge();
     }
 }
 
@@ -103,8 +99,6 @@ fn status(state: &AppState) -> Status {
     // `config.lock()` in this struct literal would deadlock the main thread.
     let config = state.config.lock().unwrap().clone();
     Status {
-        server_error: state.server_error.lock().unwrap().clone(),
-        hooks_installed: claude_settings::is_installed(&state.claude_settings),
         sound_enabled: config.sound_enabled,
         edge: config.placement.edge,
         movable: state.movable.load(Ordering::Relaxed),
@@ -112,17 +106,22 @@ fn status(state: &AppState) -> Status {
     }
 }
 
-pub fn emit_sessions(app: &AppHandle) {
-    let list = app.state::<AppState>().sessions.lock().unwrap().list();
-    let _ = app.emit("sessions-changed", list);
+fn content(state: &AppState) -> Content {
+    // Clone and release: modules may lock the config while listing items.
+    let config = state.config.lock().unwrap().clone();
+    module::content(&state.modules, &config)
+}
+
+pub fn emit_content(app: &AppHandle) {
+    let _ = app.emit("content-changed", content(&app.state::<AppState>()));
 }
 
 pub fn emit_status(app: &AppHandle) {
     let _ = app.emit("status-changed", status(&app.state::<AppState>()));
 }
 
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
+/// Starts winotch with the given modules (ADR-0009).
+pub fn run(mut modules: Vec<Box<dyn Module>>) {
     tauri::Builder::default()
         // A second launch would fail to bind the hook port: bring the running
         // one forward instead, notch and settings (e.g. from the Start menu).
@@ -134,7 +133,7 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .invoke_handler(tauri::generate_handler![
-            get_sessions,
+            get_content,
             get_status,
             acknowledge,
             set_hit_area,
@@ -149,12 +148,11 @@ pub fn run() {
             settings::set_movable,
             settings::recenter,
             settings::set_cursor_resistance,
-            settings::set_session_timeout,
             settings::set_autostart,
-            settings::set_claude_connected,
-            settings::set_server_port
+            settings::set_module_enabled,
+            settings::module_call
         ])
-        .setup(|app| {
+        .setup(move |app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -165,29 +163,24 @@ pub fn run() {
 
             let config_dir = app.path().app_config_dir()?;
             let config = config::load_or_create(&config_dir);
-            let token = config::load_or_create_token(&config_dir)?;
-            let claude_settings = claude_settings::settings_path(&app.path().home_dir()?);
-            let (server, server_error) =
-                match server::start(app.handle().clone(), config.server_port, token.clone()) {
-                    Ok(server) => (Some(server), None),
-                    Err(e) => {
-                        log::error!("hook server: {e}");
-                        (None, Some(format!("Port {} occupé", config.server_port)))
-                    }
-                };
             platform::set_resistance_strength(config.cursor_resistance_strength);
+            let enabled: Vec<bool> = modules
+                .iter()
+                .map(|m| config.module_enabled(m.id()))
+                .collect();
             app.manage(AppState {
-                sessions: Mutex::new(SessionStore::default()),
+                modules: std::mem::take(&mut modules),
                 config: Mutex::new(config),
                 config_dir,
-                token,
-                claude_settings,
-                server: Mutex::new(server),
-                server_error: Mutex::new(server_error),
                 user_hidden: AtomicBool::new(false),
                 movable: AtomicBool::new(false),
             });
-            spawn_pruner(app.handle().clone());
+            let state = app.state::<AppState>();
+            for (module, enabled) in state.modules.iter().zip(enabled) {
+                if enabled {
+                    module.start(&Host::new(app.handle().clone(), module.id()));
+                }
+            }
 
             let window = app
                 .get_webview_window(NOTCH_LABEL)
@@ -222,24 +215,4 @@ pub fn run() {
         })
         .run(tauri::generate_context!())
         .expect("error while running winotch");
-}
-
-/// Removes sessions whose terminal died without sending `SessionEnd`.
-fn spawn_pruner(app: AppHandle) {
-    std::thread::spawn(move || {
-        loop {
-            std::thread::sleep(Duration::from_secs(60));
-            let state = app.state::<AppState>();
-            // Read every time: the delay can change in the settings.
-            let minutes = state.config.lock().unwrap().session_timeout_minutes;
-            let changed = state
-                .sessions
-                .lock()
-                .unwrap()
-                .prune(Instant::now(), Duration::from_secs(minutes * 60));
-            if changed {
-                emit_sessions(&app);
-            }
-        }
-    });
 }

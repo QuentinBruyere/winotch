@@ -1,17 +1,9 @@
 <script lang="ts">
-  import {
-    mostUrgent,
-    projectName,
-    stateColor,
-    stateLabels,
-    type Edge,
-    type Session,
-    type Status,
-  } from './session'
+  import { mostUrgent, toneColor, type Edge, type Item } from './content'
 
   let {
-    sessions,
-    status,
+    items,
+    notes,
     notice,
     edge,
     expanded,
@@ -27,8 +19,8 @@
     onpointermove,
     onpointerup,
   }: {
-    sessions: Session[]
-    status: Status
+    items: Item[]
+    notes: string[]
     notice: string | null
     edge: Edge
     expanded: boolean
@@ -45,14 +37,8 @@
     onpointerup: () => void
   } = $props()
 
-  const top = $derived(mostUrgent(sessions))
+  const top = $derived(mostUrgent(items))
   const vertical = $derived(edge === 'left' || edge === 'right')
-
-  // Shown when there is nothing to report about Claude Code itself.
-  const fallback = $derived(
-    status.serverError ??
-      (status.hooksInstalled ? 'Aucune session' : 'Claude Code non connecté'),
-  )
 
   // Every shape is centered on the anchor along the edge, then kept inside the
   // window: at an end of the edge the notch opens towards the other end. Same
@@ -111,51 +97,49 @@
       <span class="row compact"><span class="label">{notice}</span></span>
     {:else if expanded}
       <ul class="list">
-        {#each sessions as session (session.id)}
+        {#each items as item (item.id)}
           <li class="row">
             <span
               class="dot"
-              class:pulse={session.state === 'working'}
-              style:background={stateColor(session.state)}
+              class:pulse={item.tone === 'active'}
+              style:background={toneColor(item.tone)}
             ></span>
-            <span class="project">{projectName(session)}</span>
+            <span class="title">{item.title}</span>
             <span class="label">
-              {stateLabels[session.state]}{session.tool ? ` · ${session.tool}` : ''}
+              {item.label}{item.detail ? ` · ${item.detail}` : ''}
             </span>
           </li>
         {:else}
-          <li class="row"><span class="label muted">{fallback}</span></li>
+          {#each notes as note, i (i)}
+            <li class="row"><span class="label muted">{note}</span></li>
+          {/each}
         {/each}
       </ul>
     {:else if vertical}
-      <!-- Thin vertical notch: session dots only, details on hover. -->
+      <!-- Thin vertical notch: dots only, details on hover. -->
       <span class="dots column">
-        {#each sessions as session (session.id)}
+        {#each items as item (item.id)}
           <span
             class="dot"
-            class:pulse={session.state === 'working'}
-            style:background={stateColor(session.state)}
+            class:pulse={item.tone === 'active'}
+            style:background={toneColor(item.tone)}
           ></span>
-        {:else}
-          <span class="dot idle" title={fallback}></span>
         {/each}
       </span>
     {:else if top}
       <span class="row compact">
         <span class="dots">
-          {#each sessions as session (session.id)}
+          {#each items as item (item.id)}
             <span
               class="dot"
-              class:pulse={session.state === 'working'}
-              style:background={stateColor(session.state)}
+              class:pulse={item.tone === 'active'}
+              style:background={toneColor(item.tone)}
             ></span>
           {/each}
         </span>
-        <span class="label">{stateLabels[top.state]}</span>
-        <span class="muted">{projectName(top)}</span>
+        <span class="label">{top.label}</span>
+        <span class="muted">{top.title}</span>
       </span>
-    {:else}
-      <span class="row compact"><span class="label muted">{fallback}</span></span>
     {/if}
   </button>
 </div>
@@ -225,7 +209,7 @@
     height: 24px;
   }
 
-  .list .project {
+  .list .title {
     flex: 0 1 auto;
     font-weight: 600;
   }
@@ -254,16 +238,12 @@
     transition: background-color 250ms ease;
   }
 
-  .dot.idle {
-    background: var(--state-idle);
-  }
-
   .pulse {
     animation: pulse 1.2s ease-in-out infinite;
   }
 
   .label,
-  .project,
+  .title,
   .muted {
     white-space: nowrap;
     overflow: hidden;
