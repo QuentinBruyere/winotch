@@ -9,7 +9,10 @@ export interface ModuleSettingsProps {
   call: (action: string, args?: Record<string, unknown>) => Promise<void>
 }
 
-// Settings sections of the modules shipped with the core, by module id.
-export const settingsComponents: Record<string, Component<ModuleSettingsProps>> = {
+// Settings sections of modules, by module id.
+export type SettingsComponents = Record<string, Component<ModuleSettingsProps>>
+
+// Settings sections of the modules shipped with the core.
+export const coreSettingsComponents: SettingsComponents = {
   'claude-code': ClaudeCodeSettings,
 }

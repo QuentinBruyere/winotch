@@ -33,28 +33,24 @@ pub struct Config {
     pub modules: BTreeMap<String, ModuleEntry>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct ModuleEntry {
-    pub enabled: bool,
+    /// Chosen by the user; `None` = the module's own default.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub enabled: Option<bool>,
     /// The module's own settings, read and written by the module.
     #[serde(flatten)]
     pub settings: Map<String, Value>,
 }
 
-impl Default for ModuleEntry {
-    fn default() -> Self {
-        Self {
-            enabled: true,
-            settings: Map::new(),
-        }
-    }
-}
-
 impl Config {
-    /// Modules are enabled until the user disables them.
-    pub fn module_enabled(&self, id: &str) -> bool {
-        self.modules.get(id).is_none_or(|m| m.enabled)
+    /// The user's choice, else `default` (`Module::enabled_by_default`).
+    pub fn module_enabled(&self, id: &str, default: bool) -> bool {
+        self.modules
+            .get(id)
+            .and_then(|m| m.enabled)
+            .unwrap_or(default)
     }
 }
 
@@ -168,7 +164,7 @@ mod tests {
         assert_eq!(config.schema_version, SCHEMA_VERSION);
         assert!(!config.sound_enabled);
         let claude = &config.modules["claude-code"];
-        assert!(claude.enabled);
+        assert_eq!(claude.enabled, None);
         assert_eq!(claude.settings["serverPort"], json!(50000));
         assert_eq!(claude.settings["sessionTimeoutMinutes"], json!(60));
     }
@@ -181,8 +177,9 @@ mod tests {
             "modules": { "claude-code": { "enabled": false } }
         });
         let config: Config = serde_json::from_value(migrate(current)).unwrap();
-        assert!(!config.module_enabled("claude-code"));
+        assert!(!config.module_enabled("claude-code", true));
         assert!(config.modules["claude-code"].settings.is_empty());
-        assert!(config.module_enabled("other"));
+        assert!(config.module_enabled("other", true));
+        assert!(!config.module_enabled("other", false));
     }
 }

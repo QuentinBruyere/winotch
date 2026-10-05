@@ -2,8 +2,10 @@
   import { getVersion } from '@tauri-apps/api/app'
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
-  import { settingsComponents } from '../modules'
+  import type { SettingsComponents } from '../modules'
   import './settings.css'
+
+  let { settingsComponents }: { settingsComponents: SettingsComponents } = $props()
 
   // Mirrors `Settings` in src-tauri/src/settings.rs
   type Strength = 'soft' | 'medium' | 'strong'

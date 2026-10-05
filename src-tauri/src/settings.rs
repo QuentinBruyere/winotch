@@ -77,7 +77,7 @@ pub fn current(app: &AppHandle) -> Settings {
             .modules
             .iter()
             .map(|m| {
-                let enabled = config.module_enabled(m.id());
+                let enabled = crate::module::is_enabled(m.as_ref(), &config);
                 ModuleInfo {
                     id: m.id().into(),
                     name: m.name().into(),
@@ -243,10 +243,10 @@ pub fn set_module_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(
         .iter()
         .find(|m| m.id() == id)
         .ok_or_else(|| format!("module inconnu : {id}"))?;
-    let was_enabled = state.config.lock().unwrap().module_enabled(&id);
+    let was_enabled = crate::module::is_enabled(module.as_ref(), &state.config.lock().unwrap());
     if was_enabled != enabled {
         update_config(&app, |c| {
-            c.modules.entry(id.clone()).or_default().enabled = enabled
+            c.modules.entry(id.clone()).or_default().enabled = Some(enabled)
         });
         if enabled {
             module.start(&Host::new(app.clone(), module.id()));
@@ -273,7 +273,7 @@ pub fn module_call(
         .iter()
         .find(|m| m.id() == id)
         .ok_or_else(|| format!("module inconnu : {id}"))?;
-    if !state.config.lock().unwrap().module_enabled(&id) {
+    if !crate::module::is_enabled(module.as_ref(), &state.config.lock().unwrap()) {
         return Err(format!("{} est désactivé", module.name()));
     }
     module.call(&action, args.unwrap_or(Value::Null))

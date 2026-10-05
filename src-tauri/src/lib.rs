@@ -61,7 +61,7 @@ fn acknowledge(state: tauri::State<AppState>) {
     for module in state
         .modules
         .iter()
-        .filter(|m| config.module_enabled(m.id()))
+        .filter(|m| module::is_enabled(m.as_ref(), &config))
     {
         module.acknowledge();
     }
@@ -120,8 +120,10 @@ pub fn emit_status(app: &AppHandle) {
     let _ = app.emit("status-changed", status(&app.state::<AppState>()));
 }
 
-/// Starts winotch with the given modules (ADR-0009).
-pub fn run(mut modules: Vec<Box<dyn Module>>) {
+/// Starts winotch with the given modules (ADR-0009). `context` comes from
+/// `tauri::generate_context!()` in the calling binary: its tauri.conf.json
+/// decides the product, the front-end and the bundle.
+pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
     tauri::Builder::default()
         // A second launch would fail to bind the hook port: bring the running
         // one forward instead, notch and settings (e.g. from the Start menu).
@@ -166,7 +168,7 @@ pub fn run(mut modules: Vec<Box<dyn Module>>) {
             platform::set_resistance_strength(config.cursor_resistance_strength);
             let enabled: Vec<bool> = modules
                 .iter()
-                .map(|m| config.module_enabled(m.id()))
+                .map(|m| module::is_enabled(m.as_ref(), &config))
                 .collect();
             app.manage(AppState {
                 modules: std::mem::take(&mut modules),
@@ -213,6 +215,6 @@ pub fn run(mut modules: Vec<Box<dyn Module>>) {
                 });
             }
         })
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running winotch");
 }

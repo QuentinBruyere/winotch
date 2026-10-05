@@ -48,6 +48,10 @@ pub trait Module: Send + Sync + 'static {
     fn id(&self) -> &'static str;
     /// Name shown to the user.
     fn name(&self) -> &'static str;
+    /// Whether the module runs until the user turns it off or on.
+    fn enabled_by_default(&self) -> bool {
+        true
+    }
     /// Called at launch when enabled, and when the user enables the module.
     fn start(&self, host: &Host);
     /// Called when the user disables the module (not when winotch quits).
@@ -139,10 +143,14 @@ pub struct Content {
     pub notes: Vec<String>,
 }
 
+pub(crate) fn is_enabled(module: &dyn Module, config: &config::Config) -> bool {
+    config.module_enabled(module.id(), module.enabled_by_default())
+}
+
 pub(crate) fn content(modules: &[Box<dyn Module>], config: &config::Config) -> Content {
     let mut content = Content::default();
     let mut any_enabled = false;
-    for module in modules.iter().filter(|m| config.module_enabled(m.id())) {
+    for module in modules.iter().filter(|m| is_enabled(m.as_ref(), config)) {
         any_enabled = true;
         let items = module.items();
         if items.is_empty() {
@@ -219,12 +227,12 @@ mod tests {
     #[test]
     fn disabled_modules_show_nothing() {
         let mut config = config::Config::default();
-        config.modules.entry("a".into()).or_default().enabled = false;
+        config.modules.entry("a".into()).or_default().enabled = Some(false);
         let content = content(&modules(), &config);
         assert!(content.items.is_empty());
         assert_eq!(content.notes, vec!["b : rien".to_string()]);
 
-        config.modules.entry("b".into()).or_default().enabled = false;
+        config.modules.entry("b".into()).or_default().enabled = Some(false);
         let content = super::content(&modules(), &config);
         assert_eq!(content.notes, vec!["Aucun module actif".to_string()]);
     }

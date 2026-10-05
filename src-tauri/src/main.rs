@@ -4,5 +4,8 @@
 use winotch_lib::modules::claude_code::ClaudeCode;
 
 fn main() {
-    winotch_lib::run(vec![Box::new(ClaudeCode::default())]);
+    winotch_lib::run(
+        tauri::generate_context!(),
+        vec![Box::new(ClaudeCode::default())],
+    );
 }
