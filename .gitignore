@@ -54,3 +54,6 @@ TODO.md
 
 # --- Documentation de travail (locale, non versionnée) ---
 docs/
+
+# --- Contexte Claude Code (local, sauvegardé dans le dépôt privé) ---
+CLAUDE.md
