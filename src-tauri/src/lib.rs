@@ -67,6 +67,22 @@ fn acknowledge(state: tauri::State<AppState>) {
     }
 }
 
+/// A button of an item in the open notch; `item` is `<module id>:<item id>`.
+#[tauri::command]
+fn item_action(state: tauri::State<AppState>, item: String, action: String) {
+    let Some((module_id, item_id)) = item.split_once(':') else {
+        return;
+    };
+    let config = state.config.lock().unwrap().clone();
+    if let Some(module) = state
+        .modules
+        .iter()
+        .find(|m| m.id() == module_id && module::is_enabled(m.as_ref(), &config))
+    {
+        module.item_action(item_id, &action);
+    }
+}
+
 /// The front decides the visible notch shape (compact / expanded, DF-0003).
 #[tauri::command]
 fn set_hit_area(
@@ -138,6 +154,7 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             get_content,
             get_status,
             acknowledge,
+            item_action,
             set_hit_area,
             start_drag,
             drag,

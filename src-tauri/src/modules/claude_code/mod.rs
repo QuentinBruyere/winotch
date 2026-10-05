@@ -72,6 +72,10 @@ impl Module for ClaudeCode {
         "Claude Code"
     }
 
+    fn description(&self) -> &'static str {
+        "L'activité de tes sessions Claude Code, en temps réel."
+    }
+
     fn start(&self, host: &Host) {
         let inner = &self.inner;
         let _ = inner.host.set(host.clone());
@@ -299,6 +303,8 @@ fn item(session: &Session) -> Item {
         label: label.into(),
         detail: session.tool.clone(),
         tone,
+        dot: true,
+        actions: Vec::new(),
     }
 }
 

@@ -12,9 +12,10 @@ use crate::{AppState, config};
 
 /// How an item looks and how urgent it is: decides its colour, which item
 /// the compact notch shows first, and the sound when an item enters it.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Tone {
+    #[default]
     Neutral,
     /// Something is running: the dot pulses.
     Active,
@@ -26,8 +27,47 @@ pub enum Tone {
     Error,
 }
 
-/// One line of the notch: a Claude Code session, a song, the weather…
+/// Icons the open notch knows for action buttons.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ActionIcon {
+    Play,
+    Pause,
+    Reset,
+}
+
+/// A button at the end of an item's row in the open notch (e.g. start a
+/// timer). Clicking it calls `Module::item_action`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Action {
+    /// Passed back to `Module::item_action`.
+    pub id: String,
+    /// Tooltip of an icon button, text of a button without icon ("+1 min").
+    pub label: String,
+    pub icon: Option<ActionIcon>,
+}
+
+impl Action {
+    pub fn icon(id: &str, icon: ActionIcon, label: &str) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            icon: Some(icon),
+        }
+    }
+
+    pub fn text(id: &str, label: &str) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            icon: None,
+        }
+    }
+}
+
+/// One line of the notch: a Claude Code session, a song, the weather…
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Item {
     /// Unique within its module; the core prefixes it with the module id.
@@ -39,6 +79,11 @@ pub struct Item {
     /// Extra detail, e.g. the running tool.
     pub detail: Option<String>,
     pub tone: Tone,
+    /// Shows a dot in the tone's colour (e.g. a session's state). Items that
+    /// only display information, like the time, go without.
+    pub dot: bool,
+    /// Buttons shown in the open notch, in order.
+    pub actions: Vec<Action>,
 }
 
 /// A feature shown in the notch. Modules are compiled in and handed to
@@ -48,6 +93,10 @@ pub trait Module: Send + Sync + 'static {
     fn id(&self) -> &'static str;
     /// Name shown to the user.
     fn name(&self) -> &'static str;
+    /// One sentence shown under the name in the settings' module list.
+    fn description(&self) -> &'static str {
+        ""
+    }
     /// Whether the module runs until the user turns it off or on.
     fn enabled_by_default(&self) -> bool {
         true
@@ -65,6 +114,8 @@ pub trait Module: Send + Sync + 'static {
     }
     /// The user clicked the notch: they have seen what it shows.
     fn acknowledge(&self) {}
+    /// The user clicked one of an item's buttons (`Item::actions`).
+    fn item_action(&self, _item: &str, _action: &str) {}
     /// Data for the module's section of the settings window.
     fn settings(&self) -> Value {
         Value::Null
@@ -143,6 +194,16 @@ pub struct Content {
     pub notes: Vec<String>,
 }
 
+/// A duration as a module would show it: "04:05", "1:02:03" past an hour.
+pub fn format_duration(seconds: u64) -> String {
+    let (h, m, s) = (seconds / 3600, seconds / 60 % 60, seconds % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m:02}:{s:02}")
+    }
+}
+
 pub(crate) fn is_enabled(module: &dyn Module, config: &config::Config) -> bool {
     config.module_enabled(module.id(), module.enabled_by_default())
 }
@@ -199,7 +260,8 @@ mod tests {
             title: "t".into(),
             label: "l".into(),
             detail: None,
-            tone: Tone::Neutral,
+            dot: true,
+            ..Item::default()
         }
     }
 
@@ -214,6 +276,13 @@ mod tests {
                 items: vec![],
             }),
         ]
+    }
+
+    #[test]
+    fn durations_get_hours_only_when_needed() {
+        assert_eq!(format_duration(0), "00:00");
+        assert_eq!(format_duration(245), "04:05");
+        assert_eq!(format_duration(3723), "1:02:03");
     }
 
     #[test]

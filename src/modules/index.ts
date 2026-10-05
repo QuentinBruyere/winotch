@@ -1,5 +1,12 @@
+import type { LucideProps } from '@lucide/svelte'
+import SquareTerminal from '@lucide/svelte/icons/square-terminal'
+import Clock from '@lucide/svelte/icons/clock'
+import Hourglass from '@lucide/svelte/icons/hourglass'
+import TimerIcon from '@lucide/svelte/icons/timer'
 import type { Component } from 'svelte'
 import ClaudeCodeSettings from './claude-code/ClaudeCodeSettings.svelte'
+import ClockSettings from './clock/ClockSettings.svelte'
+import TimerSettings from './timer/TimerSettings.svelte'
 
 // What a module's settings component receives (ADR-0009).
 export interface ModuleSettingsProps {
@@ -9,10 +16,19 @@ export interface ModuleSettingsProps {
   call: (action: string, args?: Record<string, unknown>) => Promise<void>
 }
 
-// Settings sections of modules, by module id.
-export type SettingsComponents = Record<string, Component<ModuleSettingsProps>>
+// Front-end side of a module: its icon (Lucide) and its settings page, if any.
+export interface ModuleUi {
+  icon: Component<LucideProps>
+  settings?: Component<ModuleSettingsProps>
+}
 
-// Settings sections of the modules shipped with the core.
-export const coreSettingsComponents: SettingsComponents = {
-  'claude-code': ClaudeCodeSettings,
+// By module id. A build that adds modules passes their entries to `start`.
+export type ModuleUis = Record<string, ModuleUi>
+
+// The modules shipped with the core.
+export const coreModuleUis: ModuleUis = {
+  'claude-code': { icon: SquareTerminal, settings: ClaudeCodeSettings },
+  clock: { icon: Clock, settings: ClockSettings },
+  stopwatch: { icon: TimerIcon },
+  timer: { icon: Hourglass, settings: TimerSettings },
 }

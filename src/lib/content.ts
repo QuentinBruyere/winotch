@@ -3,6 +3,17 @@ import type { SoundKind } from './sound'
 // Mirrors `Tone` in src-tauri/src/module.rs: colour, urgency and sound of an item.
 export type Tone = 'neutral' | 'active' | 'attention' | 'question' | 'success' | 'error'
 
+// Mirrors `ActionIcon` in src-tauri/src/module.rs
+export type ActionIcon = 'play' | 'pause' | 'reset'
+
+// Mirrors `Action` in src-tauri/src/module.rs: a button at the end of a row.
+export interface Action {
+  id: string
+  // Tooltip of an icon button, text of a button without icon ("+1 min").
+  label: string
+  icon: ActionIcon | null
+}
+
 // Mirrors `Item` in src-tauri/src/module.rs: one line of the notch.
 export interface Item {
   // `<module id>:<item id>`
@@ -11,6 +22,9 @@ export interface Item {
   label: string
   detail: string | null
   tone: Tone
+  // Shows a dot in the tone's colour; text-only items (the time) have none.
+  dot: boolean
+  actions: Action[]
 }
 
 // Mirrors `Content` in src-tauri/src/module.rs

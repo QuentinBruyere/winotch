@@ -1,4 +1,4 @@
-import { coreSettingsComponents } from './modules'
+import { coreModuleUis } from './modules'
 import { start } from './start'
 
-export default start(coreSettingsComponents)
+export default start(coreModuleUis)

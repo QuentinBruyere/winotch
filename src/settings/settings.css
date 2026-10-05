@@ -27,18 +27,120 @@ html[data-window='settings'] {
     background: var(--bg);
   }
 
-  & main {
-    max-width: 560px;
-    margin: 0 auto;
-    padding: 20px 20px 28px;
+  /* Categories on the left, the chosen one on the right (DF-0007). */
+  & .layout {
     display: grid;
+    grid-template-columns: 180px 1fr;
+    height: 100vh;
+  }
+
+  & nav {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    padding: 18px 10px;
+    border-right: 1px solid var(--border);
+    background: var(--card);
+  }
+
+  & .brand {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    padding: 0 10px 14px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+
+  & .nav-item {
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 7px 10px;
+  }
+
+  /* "À propos" sits at the bottom of the menu. */
+  & .nav-item.bottom {
+    margin-top: auto;
+  }
+
+  & .nav-item:hover {
+    background: var(--bg);
+  }
+
+  & .nav-item.current {
+    background: var(--accent);
+    color: var(--accent-text);
+    font-weight: 600;
+  }
+
+  & main {
+    overflow-y: auto;
+    padding: 20px 24px 28px;
+    display: grid;
+    align-content: start;
     gap: 14px;
   }
 
-  & header {
+  & main > * {
+    width: 100%;
+    max-width: 600px;
+    box-sizing: border-box;
+  }
+
+  & .back {
+    justify-self: start;
+    width: auto;
+    border: none;
+    background: transparent;
+    padding: 0;
+    color: var(--accent);
+  }
+
+  & .actions {
     display: flex;
-    align-items: baseline;
-    gap: 8px;
+    align-items: center;
+    gap: 10px;
+  }
+
+  /* One card per module (DF-0007). */
+  & .module-card {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+  }
+
+  & .module-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 38px;
+    height: 38px;
+    border-radius: 9px;
+    background: var(--bg);
+    color: var(--accent);
+  }
+
+  & .module-card.disabled .module-icon {
+    color: var(--muted);
+  }
+
+  & .module-text {
+    flex: 1;
+    min-width: 0;
+  }
+
+  & button.icon {
+    display: grid;
+    place-items: center;
+    padding: 5px;
+  }
+
+  /* A module's settings start a new card: no separator above their first row. */
+  & section > .separated:first-child {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
   }
 
   & h1 {
@@ -171,6 +273,16 @@ html[data-window='settings'] {
   & select {
     font: inherit;
     max-width: 240px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text);
+  }
+
+  & input[type='text'] {
+    font: inherit;
+    width: 120px;
     padding: 5px 8px;
     border-radius: 6px;
     border: 1px solid var(--border);

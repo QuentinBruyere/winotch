@@ -1,5 +1,14 @@
 <script lang="ts">
-  import { mostUrgent, toneColor, type Edge, type Item } from './content'
+  import Pause from '@lucide/svelte/icons/pause'
+  import Play from '@lucide/svelte/icons/play'
+  import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
+  import { mostUrgent, toneColor, type ActionIcon, type Edge, type Item } from './content'
+
+  const actionIcons: Record<ActionIcon, typeof Play> = {
+    play: Play,
+    pause: Pause,
+    reset: RotateCcw,
+  }
 
   let {
     items,
@@ -13,6 +22,7 @@
     movable,
     anchor,
     onclick,
+    onaction,
     onenter,
     onleave,
     onpointerdown,
@@ -30,6 +40,8 @@
     movable: boolean
     anchor: number | null
     onclick: () => void
+    // A button of an item: `itemId` is `<module id>:<item id>`.
+    onaction: (itemId: string, actionId: string) => void
     onenter: () => void
     onleave: () => void
     onpointerdown: (e: PointerEvent) => void
@@ -38,6 +50,8 @@
   } = $props()
 
   const top = $derived(mostUrgent(items))
+  // Only some items have a dot (a state), others just show text (the time).
+  const dotted = $derived(items.filter((i) => i.dot))
   const vertical = $derived(edge === 'left' || edge === 'right')
 
   // Every shape is centered on the anchor along the edge, then kept inside the
@@ -77,7 +91,11 @@
 <!-- The window is larger than the notch: the shape is glued to the attached
      side, it then grows towards the inside of the screen. -->
 <div class="frame">
-  <button
+  <!-- Not a <button>: it holds the items' buttons. The window never takes
+       the keyboard focus, so there is no keyboard access to provide. -->
+  <div
+    role="button"
+    tabindex="-1"
     class="notch"
     class:vertical={vertical && !expanded && !notice}
     class:movable
@@ -86,6 +104,7 @@
     style:height="{height}px"
     style:border-radius={corners}
     {onclick}
+    onkeydown={(e) => e.key === 'Enter' && onclick()}
     onmouseenter={onenter}
     onmouseleave={onleave}
     {onpointerdown}
@@ -96,18 +115,44 @@
     {#if notice}
       <span class="row compact"><span class="label">{notice}</span></span>
     {:else if expanded}
-      <ul class="list">
+      <!-- Without items, the notes alone are centered. -->
+      <ul class="list" class:centered={items.length === 0}>
         {#each items as item (item.id)}
           <li class="row">
-            <span
-              class="dot"
-              class:pulse={item.tone === 'active'}
-              style:background={toneColor(item.tone)}
-            ></span>
-            <span class="title">{item.title}</span>
-            <span class="label">
+            {#if item.dot}
+              <span
+                class="dot"
+                class:pulse={item.tone === 'active'}
+                style:background={toneColor(item.tone)}
+              ></span>
+            {:else if dotted.length > 0}
+              <!-- Keeps the texts aligned with the dotted rows. -->
+              <span class="dot blank"></span>
+            {/if}
+            {#if item.title}<span class="title">{item.title}</span>{/if}
+            <span class="label" class:lead={!item.title}>
               {item.label}{item.detail ? ` · ${item.detail}` : ''}
             </span>
+            {#if item.actions.length > 0}
+              <span class="actions">
+                {#each item.actions as action (action.id)}
+                  {@const Icon = action.icon ? actionIcons[action.icon] : null}
+                  <button
+                    class="action"
+                    class:text={!Icon}
+                    title={action.label}
+                    aria-label={action.label}
+                    onclick={(e) => {
+                      // Not an acknowledgement of the whole notch.
+                      e.stopPropagation()
+                      onaction(item.id, action.id)
+                    }}
+                  >
+                    {#if Icon}<Icon size={13} strokeWidth={2.5} />{:else}{action.label}{/if}
+                  </button>
+                {/each}
+              </span>
+            {/if}
           </li>
         {/each}
         <!-- Modules without items still say how they are (ADR-0009). -->
@@ -118,7 +163,7 @@
     {:else if vertical}
       <!-- Thin vertical notch: dots only, details on hover. -->
       <span class="dots column">
-        {#each items as item (item.id)}
+        {#each dotted as item (item.id)}
           <span
             class="dot"
             class:pulse={item.tone === 'active'}
@@ -128,20 +173,22 @@
       </span>
     {:else if top}
       <span class="row compact">
-        <span class="dots">
-          {#each items as item (item.id)}
-            <span
-              class="dot"
-              class:pulse={item.tone === 'active'}
-              style:background={toneColor(item.tone)}
-            ></span>
-          {/each}
-        </span>
+        {#if dotted.length > 0}
+          <span class="dots">
+            {#each dotted as item (item.id)}
+              <span
+                class="dot"
+                class:pulse={item.tone === 'active'}
+                style:background={toneColor(item.tone)}
+              ></span>
+            {/each}
+          </span>
+        {/if}
         <span class="label">{top.label}</span>
-        <span class="muted">{top.title}</span>
+        {#if top.title}<span class="muted">{top.title}</span>{/if}
       </span>
     {/if}
-  </button>
+  </div>
 </div>
 
 <style>
@@ -219,8 +266,45 @@
     opacity: 0.75;
   }
 
-  .list .note {
+  .list .note,
+  .list .lead {
     margin-left: 0;
+  }
+
+  .actions {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  .action {
+    all: unset;
+    display: grid;
+    place-items: center;
+    min-width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    background: rgb(255 255 255 / 0.12);
+    color: var(--notch-fg);
+    cursor: pointer;
+    transition: background-color 150ms ease;
+  }
+
+  .action.text {
+    padding: 0 7px;
+    font-size: 11px;
+  }
+
+  .action:hover {
+    background: rgb(255 255 255 / 0.25);
+  }
+
+  .list.centered .row {
+    justify-content: center;
+  }
+
+  .dot.blank {
+    background: transparent;
   }
 
   .dots {

@@ -151,6 +151,7 @@
   movable={status.movable}
   anchor={status.anchor}
   onclick={() => !status.movable && invoke('acknowledge')}
+  onaction={(item, action) => void invoke('item_action', { item, action })}
   onpointerdown={startDrag}
   onpointermove={drag}
   onpointerup={endDrag}

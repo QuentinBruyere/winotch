@@ -1,35 +1,22 @@
-//! Date and time module: one item with the local time and date. Off by
-//! default, the notch stays empty until the user turns it on (ADR-0009).
+//! Date and time module: one item with the local time and/or date, written
+//! as the user chose. Off by default, the notch stays empty until the user
+//! turns it on (ADR-0009).
+
+mod format;
 
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Duration;
 
-use chrono::{Datelike, Local, NaiveDateTime, Timelike};
+use chrono::{Local, Timelike};
+use serde_json::Value;
 
-use crate::module::{Host, Item, Module, Tone};
+use crate::module::{Host, Item, Module};
+use format::Settings;
 
-/// Longest wait between two checks of the minute: a sleeping computer may
+/// Longest wait between two checks of the clock: a sleeping computer may
 /// overrun a single sleep until the next minute.
 const MAX_WAIT: Duration = Duration::from_secs(5);
-
-const WEEKDAYS: [&str; 7] = [
-    "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
-];
-const MONTHS: [&str; 12] = [
-    "janvier",
-    "février",
-    "mars",
-    "avril",
-    "mai",
-    "juin",
-    "juillet",
-    "août",
-    "septembre",
-    "octobre",
-    "novembre",
-    "décembre",
-];
 
 #[derive(Default)]
 pub struct Clock {
@@ -39,6 +26,7 @@ pub struct Clock {
 #[derive(Default)]
 struct Inner {
     host: OnceLock<Host>,
+    settings: Mutex<Settings>,
     running: AtomicBool,
     ticker_started: AtomicBool,
 }
@@ -52,6 +40,10 @@ impl Module for Clock {
         "Date et heure"
     }
 
+    fn description(&self) -> &'static str {
+        "L'heure et la date dans le notch."
+    }
+
     fn enabled_by_default(&self) -> bool {
         false
     }
@@ -59,6 +51,7 @@ impl Module for Clock {
     fn start(&self, host: &Host) {
         let inner = &self.inner;
         let _ = inner.host.set(host.clone());
+        *inner.settings.lock().unwrap() = host.load_settings();
         inner.running.store(true, Ordering::Relaxed);
         if !inner.ticker_started.swap(true, Ordering::Relaxed) {
             spawn_ticker(Arc::clone(inner));
@@ -77,69 +70,65 @@ impl Module for Clock {
         if !self.inner.running.load(Ordering::Relaxed) {
             return Vec::new();
         }
-        let (time, date) = format(Local::now().naive_local());
+        let settings = self.inner.settings.lock().unwrap().clone();
+        let (label, title) = format::format(Local::now().naive_local(), &settings);
         vec![Item {
             id: "now".into(),
-            title: date,
-            label: time,
+            title,
+            label,
             detail: None,
-            tone: Tone::Neutral,
+            ..Item::default()
         }]
+    }
+
+    fn settings(&self) -> Value {
+        serde_json::to_value(&*self.inner.settings.lock().unwrap()).unwrap_or(Value::Null)
+    }
+
+    /// `update`: replaces the settings with `args` (the whole object).
+    fn call(&self, action: &str, args: Value) -> Result<Value, String> {
+        if action != "update" {
+            return Err(format!("unknown action {action}"));
+        }
+        let settings: Settings =
+            serde_json::from_value(args).map_err(|e| format!("réglages invalides : {e}"))?;
+        *self.inner.settings.lock().unwrap() = settings.clone();
+        if let Some(host) = self.inner.host.get() {
+            host.save_settings(&settings);
+            host.settings_changed();
+            host.refresh();
+        }
+        Ok(Value::Null)
     }
 }
 
-/// "14:32" and "lundi 5 octobre".
-fn format(now: NaiveDateTime) -> (String, String) {
-    let time = format!("{:02}:{:02}", now.hour(), now.minute());
-    let weekday = WEEKDAYS[now.weekday().num_days_from_monday() as usize];
-    let month = MONTHS[now.month0() as usize];
-    let day = match now.day() {
-        1 => "1er".to_owned(),
-        d => d.to_string(),
-    };
-    (time, format!("{weekday} {day} {month}"))
-}
-
-/// Redraws the notch when the minute changes, only while the module runs.
+/// Redraws the notch when the shown time changes (every minute, or every
+/// second when seconds are shown), only while the module runs.
 fn spawn_ticker(inner: Arc<Inner>) {
     std::thread::spawn(move || {
         let mut shown = None;
         loop {
+            let seconds = inner.settings.lock().unwrap().seconds;
             let now = Local::now();
-            let minute = (now.date_naive(), now.hour(), now.minute());
-            if inner.running.load(Ordering::Relaxed) && shown != Some(minute) {
-                shown = Some(minute);
+            let tick = (
+                now.date_naive(),
+                now.hour(),
+                now.minute(),
+                if seconds { now.second() } else { 0 },
+            );
+            if inner.running.load(Ordering::Relaxed) && shown != Some(tick) {
+                shown = Some(tick);
                 if let Some(host) = inner.host.get() {
                     host.refresh();
                 }
             }
-            let to_next_minute = Duration::from_secs(u64::from(60 - now.second()));
-            std::thread::sleep(to_next_minute.min(MAX_WAIT));
+            let wait = if seconds {
+                // Wake just after the next second starts.
+                Duration::from_nanos(u64::from(1_000_000_000 - now.nanosecond() % 1_000_000_000))
+            } else {
+                Duration::from_secs(u64::from(60 - now.second()))
+            };
+            std::thread::sleep(wait.min(MAX_WAIT));
         }
     });
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use chrono::NaiveDate;
-
-    fn at(y: i32, m: u32, d: u32, h: u32, min: u32) -> NaiveDateTime {
-        NaiveDate::from_ymd_opt(y, m, d)
-            .unwrap()
-            .and_hms_opt(h, min, 0)
-            .unwrap()
-    }
-
-    #[test]
-    fn formats_time_and_french_date() {
-        assert_eq!(
-            format(at(2026, 10, 5, 14, 32)),
-            ("14:32".into(), "lundi 5 octobre".into())
-        );
-        assert_eq!(
-            format(at(2026, 2, 1, 9, 5)),
-            ("09:05".into(), "dimanche 1er février".into())
-        );
-    }
 }

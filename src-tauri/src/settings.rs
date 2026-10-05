@@ -30,6 +30,7 @@ pub struct ScreenChoice {
 pub struct ModuleInfo {
     id: String,
     name: String,
+    description: String,
     enabled: bool,
     /// The module's own data, read by its settings component.
     settings: Value,
@@ -81,6 +82,7 @@ pub fn current(app: &AppHandle) -> Settings {
                 ModuleInfo {
                     id: m.id().into(),
                     name: m.name().into(),
+                    description: m.description().into(),
                     enabled,
                     settings: if enabled { m.settings() } else { Value::Null },
                 }
@@ -112,8 +114,8 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     let window =
         WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
             .title("Paramètres de winotch")
-            .inner_size(480.0, 760.0)
-            .min_inner_size(420.0, 480.0)
+            .inner_size(760.0, 560.0)
+            .min_inner_size(600.0, 420.0)
             .center()
             .build()?;
     // Move mode only lasts while the settings are open.
