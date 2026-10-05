@@ -11,7 +11,8 @@ Windows first; macOS and Linux are planned.
 - **Cursor resistance** (Windows): the cursor stops at the notch edge until you push through.
 - **Modules**: everything the notch shows comes from modules, each with its own on/off switch and settings.
   - **Claude Code**: one dot per session, colored by state; click the notch to acknowledge finished sessions.
-  - **Date and time** (off by default).
+  - **Date and time** (off by default): time and/or date, 12/24 h, seconds, date style.
+  - **Stopwatch** and **Timer** (off by default), controlled from buttons in the open notch; the timer rings when the time is up.
 
 ## How it works
 
