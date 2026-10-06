@@ -244,6 +244,36 @@ pub fn shape_in_window(
     }
 }
 
+/// Top-left corners of stacked cards inside the window (DF-0011, separate
+/// layout): the first card (the notch) against the attached side, the others
+/// after it, `gap` apart, towards the inside of the screen on the top and
+/// bottom edges, down along the edge on the left and right ones (the inside
+/// is too narrow there). The whole stack is placed like a single shape.
+pub fn stack_in_window(
+    edge: Edge,
+    window: (i32, i32),
+    cards: &[(i32, i32)],
+    gap: i32,
+    anchor: i32,
+) -> Vec<(i32, i32)> {
+    let width = cards.iter().map(|c| c.0).max().unwrap_or(0);
+    let gaps = gap * cards.len().saturating_sub(1) as i32;
+    let height = cards.iter().map(|c| c.1).sum::<i32>() + gaps;
+    let (x, y) = shape_in_window(edge, window, (width, height), anchor);
+    let mut before = 0;
+    cards
+        .iter()
+        .map(|&(w, h)| {
+            let top = match edge {
+                Edge::Bottom => y + height - before - h,
+                _ => y + before,
+            };
+            before += h + gap;
+            (x + (width - w) / 2, top)
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -460,6 +490,40 @@ mod tests {
                 "DISPLAY1".into(),
                 "Écran 2 · 2560 × 1080 · principal".into()
             )
+        );
+    }
+
+    #[test]
+    fn a_single_card_is_placed_like_a_shape() {
+        for edge in [Edge::Top, Edge::Bottom, Edge::Left, Edge::Right] {
+            assert_eq!(
+                stack_in_window(edge, WINDOW, &[(300, 36)], 8, 190),
+                vec![shape_in_window(edge, WINDOW, (300, 36), 190)]
+            );
+        }
+    }
+
+    #[test]
+    fn cards_stack_towards_the_inside_of_the_screen() {
+        let cards = [(380, 70), (380, 44)];
+        assert_eq!(
+            stack_in_window(Edge::Top, (380, 320), &cards, 8, 190),
+            vec![(0, 0), (0, 78)]
+        );
+        // From the bottom edge up: the notch stays against it.
+        assert_eq!(
+            stack_in_window(Edge::Bottom, (380, 320), &cards, 8, 190),
+            vec![(0, 250), (0, 198)]
+        );
+        // Left and right: down along the edge, the stack centered on the anchor.
+        assert_eq!(
+            stack_in_window(Edge::Left, (380, 320), &cards, 8, 160),
+            vec![(0, 99), (0, 177)]
+        );
+        // Near the end of the edge the stack stays inside the window.
+        assert_eq!(
+            stack_in_window(Edge::Right, (380, 320), &cards, 8, 300),
+            vec![(0, 198), (0, 276)]
         );
     }
 }

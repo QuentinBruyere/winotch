@@ -15,6 +15,8 @@
   type Strength = 'soft' | 'medium' | 'strong' | 'veryStrong' | 'impassable'
   type Edge = 'top' | 'bottom' | 'left' | 'right'
   type Style = 'notch' | 'pill'
+  type ModuleLayout = 'joined' | 'separate'
+  type NotchSpeed = 'slow' | 'normal' | 'fast'
   interface Settings {
     soundEnabled: boolean
     hideInFullscreen: boolean
@@ -30,6 +32,8 @@
     resistanceAvailable: boolean
     autostart: boolean
     modules: ModuleInfo[]
+    moduleLayout: ModuleLayout
+    notchSpeed: NotchSpeed
     configDir: string
   }
 
@@ -49,6 +53,17 @@
     { id: 'display', label: 'Affichage' },
     { id: 'modules', label: 'Modules' },
     { id: 'about', label: 'À propos' },
+  ]
+
+  const speedChoices: { value: NotchSpeed; label: string }[] = [
+    { value: 'slow', label: 'Lente' },
+    { value: 'normal', label: 'Normale' },
+    { value: 'fast', label: 'Rapide' },
+  ]
+
+  const layoutChoices: { value: ModuleLayout; label: string }[] = [
+    { value: 'joined', label: 'Collés' },
+    { value: 'separate', label: 'Décollés' },
   ]
 
   const styleChoices: { value: Style; label: string }[] = [
@@ -117,7 +132,7 @@
   let drag = $state<Drag | null>(null)
   // The new order, shown until the saved settings come back.
   let localOrder = $state<string[] | null>(null)
-  const cards: Record<string, HTMLElement> = {}
+  const cards = $state<Record<string, HTMLElement>>({})
   const orderedModules = $derived.by(() => {
     const modules = settings?.modules ?? []
     if (!localOrder) return modules
@@ -220,6 +235,17 @@
       error = String(e)
     }
   }
+
+  // Position of the speed slider, follows the saved setting.
+  let speedIndex = $state(1)
+  $effect(() => {
+    if (settings) {
+      speedIndex = Math.max(
+        0,
+        speedChoices.findIndex((c) => c.value === settings?.notchSpeed),
+      )
+    }
+  })
 
   // Position of the notched slider, follows the saved setting.
   let resistanceIndex = $state(0)
@@ -347,6 +373,65 @@
               />
             </label>
           {/if}
+          <div class="stack separated">
+            <div>
+              <div class="label">Vitesse d'ouverture</div>
+              <div class="hint">Quand le notch s'ouvre au survol ou lors d'une alerte, et se referme.</div>
+            </div>
+            <!-- Notched slider, like the cursor resistance one. -->
+            <div class="notched">
+              <input
+                type="range"
+                min="0"
+                max={speedChoices.length - 1}
+                step="1"
+                aria-label="Vitesse d'ouverture"
+                aria-valuetext={speedChoices[speedIndex].label}
+                bind:value={speedIndex}
+                onchange={() => run('set_notch_speed', { speed: speedChoices[speedIndex].value })}
+              />
+              <div class="stops">
+                {#each speedChoices as choice, i (choice.value)}
+                  <button
+                    class:selected={speedIndex === i}
+                    style:left="{(i / (speedChoices.length - 1)) * 100}%"
+                    onclick={() => {
+                      speedIndex = i
+                      void run('set_notch_speed', { speed: choice.value })
+                    }}
+                  >
+                    {choice.label}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          </div>
+          <div class="stack separated">
+            <div>
+              <div class="label">Modules</div>
+              <div class="hint">
+                Quand plusieurs modules s'affichent : dans le notch, séparés par un trait, ou
+                chacun dans sa carte, sous le notch.
+              </div>
+            </div>
+            <div
+              class="segmented"
+              style:grid-template-columns="repeat(2, 1fr)"
+              role="radiogroup"
+              aria-label="Modules"
+            >
+              {#each layoutChoices as choice (choice.value)}
+                <button
+                  role="radio"
+                  aria-checked={settings.moduleLayout === choice.value}
+                  class:selected={settings.moduleLayout === choice.value}
+                  onclick={() => run('set_module_layout', { layout: choice.value })}
+                >
+                  {choice.label}
+                </button>
+              {/each}
+            </div>
+          </div>
           <div class="stack separated">
             <div>
               <div class="label">Position du notch</div>

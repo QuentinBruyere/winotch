@@ -1,11 +1,24 @@
 //! OS-specific tweaks for the notch window. Each OS gets its own module.
 
+/// A visible card of the notch, in physical pixels relative to the window.
+/// The first card of a notch is attached to its edge (square corners on that
+/// side); a pill and the other cards of the separate layout are `detached`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Shape {
+    pub x: i32,
+    pub y: i32,
+    pub width: i32,
+    pub height: i32,
+    pub radius: i32,
+    pub detached: bool,
+}
+
 #[cfg(windows)]
 mod windows;
 #[cfg(windows)]
 pub use windows::{
-    bring_to_front, foreground_class, fullscreen_on_notch_screen, prepare_overlay,
-    restrict_to_shape, set_cursor_resistance, set_resistance_rect, set_resistance_strength,
+    bring_to_front, foreground_class, fullscreen_on_notch_screen, prepare_overlay, repaint_host,
+    restrict_to_shapes, set_cursor_resistance, set_resistance_rect, set_resistance_strength,
     take_breakthrough,
 };
 
@@ -16,21 +29,30 @@ pub fn prepare_overlay(_window: &tauri::WebviewWindow) -> tauri::Result<()> {
 
 /// Not implemented yet outside Windows: the notch never auto-hides there.
 #[cfg(not(windows))]
+pub fn repaint_host(_window: &tauri::WebviewWindow) -> tauri::Result<()> {
+    Ok(())
+}
+
+#[cfg(not(windows))]
 pub fn fullscreen_on_notch_screen(_notch: &tauri::WebviewWindow) -> bool {
     false
 }
 
-/// Outside Windows the window itself is resized to the notch shape for now.
+/// Outside Windows the window itself is resized around the cards for now.
 #[cfg(not(windows))]
-pub fn restrict_to_shape(
+pub fn restrict_to_shapes(
     window: &tauri::WebviewWindow,
     _edge: crate::placement::Edge,
-    shape: (i32, i32, i32, i32),
-    _radius: i32,
-    _detached: bool,
+    shapes: &[Shape],
 ) -> tauri::Result<()> {
-    let (_, _, width, height) = shape;
-    window.set_size(tauri::PhysicalSize::new(width as u32, height as u32))?;
+    let left = shapes.iter().map(|s| s.x).min().unwrap_or(0);
+    let top = shapes.iter().map(|s| s.y).min().unwrap_or(0);
+    let right = shapes.iter().map(|s| s.x + s.width).max().unwrap_or(0);
+    let bottom = shapes.iter().map(|s| s.y + s.height).max().unwrap_or(0);
+    window.set_size(tauri::PhysicalSize::new(
+        (right - left) as u32,
+        (bottom - top) as u32,
+    ))?;
     crate::notch::place(window)
 }
 

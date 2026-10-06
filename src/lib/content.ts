@@ -54,6 +54,26 @@ export type Edge = 'top' | 'bottom' | 'left' | 'right'
 // src-tauri/src/placement.rs
 export type Style = 'notch' | 'pill'
 
+// Modules all in the notch, or one card each, mirrors `ModuleLayout` in
+// src-tauri/src/config.rs (DF-0011)
+export type ModuleLayout = 'joined' | 'separate'
+
+// A drawn card: the notch first, then, in the separate layout, one card per
+// other module. Sizes in logical pixels, mirrored by `notch::Card` in Rust.
+export interface Card {
+  width: number
+  height: number
+  radius: number
+  // Modules shown in it when the notch is open.
+  sections: Section[]
+}
+
+// Mirrors `NotchSpeed` in src-tauri/src/config.rs
+export type NotchSpeed = 'slow' | 'normal' | 'fast'
+
+// Length of the opening / closing animation, in ms.
+export const speedMs: Record<NotchSpeed, number> = { slow: 400, normal: 250, fast: 150 }
+
 // Mirrors `Status` in src-tauri/src/lib.rs
 export interface Status {
   soundEnabled: boolean
@@ -61,6 +81,8 @@ export interface Status {
   style: Style
   // Move mode: the notch can be dragged along its edge (DF-0006)
   movable: boolean
+  layout: ModuleLayout
+  speed: NotchSpeed
   // Center of the compact notch along the edge, from the start of the window,
   // in logical pixels; null = the middle of the window (DF-0006)
   anchor: number | null

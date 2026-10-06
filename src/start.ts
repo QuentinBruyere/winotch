@@ -10,6 +10,8 @@ import Settings from './settings/Settings.svelte'
 export function start(moduleUis: ModuleUis) {
   const label = getCurrentWindow().label
   document.documentElement.dataset.window = label
+  // The notch is not a web page: no browser menu on right click.
+  if (label !== 'settings') document.addEventListener('contextmenu', (e) => e.preventDefault())
   const target = document.getElementById('app')!
   return label === 'settings'
     ? mount(Settings, { target, props: { moduleUis } })

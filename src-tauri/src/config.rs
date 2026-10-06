@@ -34,6 +34,30 @@ pub struct Config {
     /// Module ids in the user's display order (DF-0011); modules missing
     /// from it come after, in their declaration order.
     pub module_order: Vec<String>,
+    pub module_layout: ModuleLayout,
+    /// How fast the notch opens and closes.
+    pub notch_speed: NotchSpeed,
+}
+
+/// Speed of the notch's opening and closing animation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NotchSpeed {
+    Slow,
+    #[default]
+    Normal,
+    Fast,
+}
+
+/// How several modules share the open notch (DF-0011).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ModuleLayout {
+    /// All in the notch, a thin line between two modules.
+    #[default]
+    Joined,
+    /// One card per module, the others under the notch.
+    Separate,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -68,6 +92,8 @@ impl Default for Config {
             placement: Placement::default(),
             modules: BTreeMap::new(),
             module_order: Vec::new(),
+            module_layout: ModuleLayout::default(),
+            notch_speed: NotchSpeed::default(),
         }
     }
 }

@@ -40,6 +40,9 @@ pub struct Status {
     style: placement::Style,
     /// Move mode: the notch can be dragged along its edge.
     movable: bool,
+    /// Modules in the notch itself, or one card each (DF-0011).
+    layout: config::ModuleLayout,
+    speed: config::NotchSpeed,
     /// Center of the compact notch along the edge, from the start of the
     /// window, in logical pixels: every shape is centered on it, then kept
     /// inside the window. `None` = the middle of the window.
@@ -85,15 +88,24 @@ fn item_action(state: tauri::State<AppState>, item: String, action: String) {
     }
 }
 
-/// The front decides the visible notch shape (compact / expanded, DF-0003).
+/// The front decides the visible cards: the notch, compact or expanded
+/// (DF-0003), then the other modules' cards in the separate layout (DF-0011).
 #[tauri::command]
-fn set_hit_area(
-    window: tauri::WebviewWindow,
-    width: f64,
-    height: f64,
-    radius: f64,
-) -> Result<(), String> {
-    notch::set_hit_area(&window, width, height, radius).map_err(|e| e.to_string())
+fn set_hit_area(window: tauri::WebviewWindow, cards: Vec<notch::Card>) -> Result<(), String> {
+    notch::set_hit_area(&window, cards).map_err(|e| e.to_string())
+}
+
+/// The cursor left the open notch: it closes once the cursor is also past
+/// the safety margin around it, or not if the cursor comes back first.
+#[tauri::command]
+fn watch_leave(app: AppHandle) {
+    notch::watch_leave(app);
+}
+
+/// The cursor is back on the notch: stops `watch_leave`.
+#[tauri::command]
+fn cancel_leave() {
+    notch::cancel_leave();
 }
 
 /// Dragging the notch in move mode (DF-0006, step 3).
@@ -121,6 +133,8 @@ fn status(state: &AppState) -> Status {
         edge: config.placement.edge,
         style: config.placement.style,
         movable: state.movable.load(Ordering::Relaxed),
+        layout: config.module_layout,
+        speed: config.notch_speed,
         anchor: notch::anchor(),
     }
 }
@@ -159,6 +173,8 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             acknowledge,
             item_action,
             set_hit_area,
+            watch_leave,
+            cancel_leave,
             start_drag,
             drag,
             end_drag,
@@ -175,6 +191,8 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_autostart,
             settings::set_module_enabled,
             settings::set_module_order,
+            settings::set_module_layout,
+            settings::set_notch_speed,
             settings::module_call
         ])
         .setup(move |app| {

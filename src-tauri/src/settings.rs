@@ -6,6 +6,7 @@ use std::sync::atomic::Ordering;
 
 use serde::Serialize;
 use serde_json::Value;
+use tauri::webview::PageLoadEvent;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
@@ -59,6 +60,8 @@ pub struct Settings {
     resistance_available: bool,
     autostart: bool,
     modules: Vec<ModuleInfo>,
+    module_layout: crate::config::ModuleLayout,
+    notch_speed: crate::config::NotchSpeed,
     config_dir: String,
 }
 
@@ -92,6 +95,8 @@ pub fn current(app: &AppHandle) -> Settings {
                 }
             })
             .collect(),
+        module_layout: config.module_layout,
+        notch_speed: config.notch_speed,
         config_dir: state.config_dir.display().to_string(),
     }
 }
@@ -108,10 +113,16 @@ fn screen_choices(app: &AppHandle) -> Vec<ScreenChoice> {
         .collect()
 }
 
+fn repaint_notch_host(app: &AppHandle) {
+    if let Some(notch) = app.get_webview_window(crate::NOTCH_LABEL)
+        && let Err(e) = platform::repaint_host(&notch)
+    {
+        log::warn!("cannot repaint the notch window: {e}");
+    }
+}
+
 /// Opens the settings window, or brings it back to the front.
 pub fn open(app: &AppHandle) -> tauri::Result<()> {
-    // Opening another webview may leave a white edge around the notch.
-    notch::request_repaint(app);
     if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {
         window.unminimize()?;
         window.show()?;
@@ -123,13 +134,20 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
             .inner_size(760.0, 560.0)
             .min_inner_size(600.0, 420.0)
             .center()
+            .on_page_load(|window, payload| {
+                if payload.event() == PageLoadEvent::Finished {
+                    repaint_notch_host(window.app_handle());
+                }
+            })
             .build()?;
+    // Creating the window leaves white pixels behind the notch's webview
+    // (see `platform::repaint_host`): wipe them, again once the page is in.
+    repaint_notch_host(app);
     // Move mode only lasts while the settings are open.
     let handle = app.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
             notch::set_movable(&handle, false);
-            notch::request_repaint(&handle);
         }
     });
     platform::bring_to_front(&window)
@@ -315,6 +333,22 @@ pub fn set_module_order(app: AppHandle, order: Vec<String>) {
     update_config(&app, |c| c.module_order = known);
     changed(&app);
     crate::emit_content(&app);
+}
+
+/// Modules joined in the notch or one card each (DF-0011).
+#[tauri::command]
+pub fn set_module_layout(app: AppHandle, layout: crate::config::ModuleLayout) {
+    update_config(&app, |c| c.module_layout = layout);
+    changed(&app);
+    crate::emit_status(&app);
+}
+
+/// How fast the notch opens and closes.
+#[tauri::command]
+pub fn set_notch_speed(app: AppHandle, speed: crate::config::NotchSpeed) {
+    update_config(&app, |c| c.notch_speed = speed);
+    changed(&app);
+    crate::emit_status(&app);
 }
 
 /// Action of a module's settings section, handled by the module itself.

@@ -1,17 +1,47 @@
 use std::sync::Mutex;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
+use serde::Deserialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
 
 use crate::placement::{self, Area, Edge, Placement, Screen, Style};
 use crate::resistance::Rect;
 use crate::{AppState, NOTCH_LABEL, platform};
 
-/// Visible notch shape in logical pixels, chosen by the front (DF-0003):
-/// width, height and corner radius. `None` until the front reports it: the
+/// One visible card of the notch in logical pixels, chosen by the front.
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct Card {
+    pub width: f64,
+    pub height: f64,
+    pub radius: f64,
+}
+
+/// Visible cards (DF-0003, DF-0011): the notch, then the other modules'
+/// cards in the separate layout. `None` until the front reports them: the
 /// compact shape of the current edge is used meanwhile.
-static HIT_AREA: Mutex<Option<(f64, f64, f64)>> = Mutex::new(None);
+static HIT_AREA: Mutex<Option<Vec<Card>>> = Mutex::new(None);
+
+/// Space between two cards of the separate layout, in logical pixels; must
+/// match `CARD_GAP` in src/App.svelte.
+const CARD_GAP: f64 = 8.0;
+
+/// Around the open notch, in logical pixels: the cursor may stray this far
+/// out without closing it, e.g. aiming at a button near its edge. Not a part
+/// of the window (clicks there reach the app below): only the closing waits.
+const SAFETY_MARGIN: f64 = 16.0;
+
+/// Left, top, right, bottom, in physical screen pixels.
+type Bounds = (i32, i32, i32, i32);
+
+/// Bounding box of the visible cards and the scale factor, for `watch_leave`.
+static OPEN_AREA: Mutex<Option<(Bounds, f64)>> = Mutex::new(None);
+
+/// Bumped to stop the running `watch_leave`, if any.
+static LEAVE_WATCH: AtomicU64 = AtomicU64::new(0);
+
+/// How often `watch_leave` reads the cursor position.
+const LEAVE_POLL: Duration = Duration::from_millis(30);
 
 /// Drag in progress (DF-0006, step 3): placement and cursor position (along
 /// the edge, physical pixels) when the button was pressed.
@@ -64,56 +94,136 @@ fn current_placement(window: &WebviewWindow) -> Placement {
         .clone()
 }
 
-/// Records the visible shape and restricts the window to it.
-pub fn set_hit_area(
-    window: &WebviewWindow,
-    width: f64,
-    height: f64,
-    radius: f64,
-) -> tauri::Result<()> {
-    *HIT_AREA.lock().unwrap() = Some((width, height, radius));
+/// Records the visible cards and restricts the window to them.
+pub fn set_hit_area(window: &WebviewWindow, cards: Vec<Card>) -> tauri::Result<()> {
+    if cards.is_empty() {
+        return Ok(());
+    }
+    *HIT_AREA.lock().unwrap() = Some(cards);
     apply_hit_area(window)
 }
 
-/// Restricts the window to the visible shape, glued to the attached edge, and
-/// gives the same shape in screen coordinates to the cursor resistance
-/// (DF-0004). Re-applied after moves, DPI or placement changes.
+/// Restricts the window to the visible cards, the notch glued to the
+/// attached edge, and gives the notch in screen coordinates to the cursor
+/// resistance (DF-0004). Re-applied after moves, DPI or placement changes.
 pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
     let placement = current_placement(window);
-    let (edge, detached) = (placement.edge, placement.style == Style::Pill);
-    let (width, height, radius) = HIT_AREA
-        .lock()
-        .unwrap()
-        .unwrap_or_else(|| compact_shape(edge, placement.style));
+    let (edge, pill) = (placement.edge, placement.style == Style::Pill);
+    let cards = HIT_AREA.lock().unwrap().clone().unwrap_or_else(|| {
+        let (width, height, radius) = compact_shape(edge, placement.style);
+        vec![Card {
+            width,
+            height,
+            radius,
+        }]
+    });
     let scale = window.scale_factor()?;
+    let px = |v: f64| (v * scale).round() as i32;
     // Window regions are relative to the outer window rectangle. The inner
     // size is also wrong before the first show (Windows still counts a frame).
     let size = window.outer_size()?;
     let size = (size.width as i32, size.height as i32);
-    let shape = (
-        (width * scale).round() as i32,
-        (height * scale).round() as i32,
-    );
     let anchor = match anchor() {
-        Some(anchor) => (anchor * scale).round() as i32,
+        Some(anchor) => px(anchor),
         None if edge.is_vertical() => size.1 / 2,
         None => size.0 / 2,
     };
-    let (x, y) = placement::shape_in_window(edge, size, shape, anchor);
-    let radius = (radius * scale).round() as i32;
-    platform::restrict_to_shape(window, edge, (x, y, shape.0, shape.1), radius, detached)?;
+    let sizes: Vec<_> = cards.iter().map(|c| (px(c.width), px(c.height))).collect();
+    let corners = placement::stack_in_window(edge, size, &sizes, px(CARD_GAP), anchor);
+    let shapes: Vec<_> = cards
+        .iter()
+        .zip(sizes)
+        .zip(corners)
+        .enumerate()
+        .map(|(i, ((card, (width, height)), (x, y)))| platform::Shape {
+            x,
+            y,
+            width,
+            height,
+            radius: px(card.radius),
+            // Only the notch itself can be glued to the edge.
+            detached: pill || i > 0,
+        })
+        .collect();
+    // The gaps between cards belong to the notch too: the cursor and clicks
+    // do not go through to the app below, and hovering them keeps it open.
+    let gaps = shapes.windows(2).map(|pair| {
+        let (upper, lower) = if pair[0].y < pair[1].y {
+            (pair[0], pair[1])
+        } else {
+            (pair[1], pair[0])
+        };
+        let left = upper.x.min(lower.x);
+        platform::Shape {
+            x: left,
+            y: upper.y + upper.height,
+            width: (upper.x + upper.width).max(lower.x + lower.width) - left,
+            height: lower.y - (upper.y + upper.height),
+            radius: 0,
+            detached: true,
+        }
+    });
+    let area: Vec<_> = shapes.iter().copied().chain(gaps).collect();
+    platform::restrict_to_shapes(window, edge, &area)?;
 
     let position = window.outer_position()?;
+    let (left, top) = (position.x, position.y);
+    *OPEN_AREA.lock().unwrap() = Some((
+        (
+            left + area.iter().map(|s| s.x).min().unwrap_or(0),
+            top + area.iter().map(|s| s.y).min().unwrap_or(0),
+            left + area.iter().map(|s| s.x + s.width).max().unwrap_or(0),
+            top + area.iter().map(|s| s.y + s.height).max().unwrap_or(0),
+        ),
+        scale,
+    ));
+
+    // The resistance guards the notch, the way in; the other cards only show
+    // while the cursor is already there.
+    let notch = shapes[0];
     platform::set_resistance_rect(Rect {
-        left: position.x + x,
-        top: position.y + y,
-        right: position.x + x + shape.0,
-        bottom: position.y + y + shape.1,
-        radius,
+        left: position.x + notch.x,
+        top: position.y + notch.y,
+        right: position.x + notch.x + notch.width,
+        bottom: position.y + notch.y + notch.height,
+        radius: notch.radius,
         attached: edge,
-        detached,
+        detached: pill,
     });
     Ok(())
+}
+
+/// The cursor left the open notch (DF-0011): tells the front once it is
+/// past the safety margin too. Stopped by `cancel_leave` or the next call.
+pub fn watch_leave(app: AppHandle) {
+    let watch = LEAVE_WATCH.fetch_add(1, Ordering::Relaxed) + 1;
+    std::thread::spawn(move || {
+        loop {
+            std::thread::sleep(LEAVE_POLL);
+            if LEAVE_WATCH.load(Ordering::Relaxed) != watch {
+                return;
+            }
+            let area = *OPEN_AREA.lock().unwrap();
+            let (Some(((left, top, right, bottom), scale)), Ok(cursor)) =
+                (area, app.cursor_position())
+            else {
+                return;
+            };
+            let margin = SAFETY_MARGIN * scale;
+            let near = cursor.x >= f64::from(left) - margin
+                && cursor.x < f64::from(right) + margin
+                && cursor.y >= f64::from(top) - margin
+                && cursor.y < f64::from(bottom) + margin;
+            if !near {
+                let _ = app.emit_to(NOTCH_LABEL, "pointer-left", ());
+                return;
+            }
+        }
+    });
+}
+
+pub fn cancel_leave() {
+    LEAVE_WATCH.fetch_add(1, Ordering::Relaxed);
 }
 
 /// Forgets the reported shape: after an edge change the front reports the
@@ -281,18 +391,7 @@ pub fn place(window: &WebviewWindow) -> tauri::Result<()> {
 /// Shows the notch and restores the overlay styles Tauri resets on show.
 pub fn show(window: &WebviewWindow) -> tauri::Result<()> {
     window.show()?;
-    platform::prepare_overlay(window)?;
-    request_repaint(window.app_handle());
-    Ok(())
-}
-
-/// Asks the notch to draw a fresh frame. WebView2 sometimes draws a frame
-/// with a white background instead of a transparent one, typically when
-/// another webview opens or the window is shown again: the white then
-/// shows in the margin of the window region around the shape (see
-/// `platform::restrict_to_shape`) until the next frame.
-pub fn request_repaint(app: &AppHandle) {
-    let _ = app.emit_to(NOTCH_LABEL, "repaint", ());
+    platform::prepare_overlay(window)
 }
 
 /// Shows or hides the notch on the user's request (tray menu).
@@ -327,11 +426,10 @@ pub fn spawn_watcher(app: AppHandle) {
 
             // Resolution, primary monitor or taskbar changed: re-place.
             if let Ok(Some(current)) = work_area(&window) {
-                if last_monitor.is_some_and(|last| last != current) {
-                    if let Err(e) = place(&window).and_then(|_| apply_hit_area(&window)) {
-                        log::warn!("failed to reposition notch: {e}");
-                    }
-                    request_repaint(&app);
+                if last_monitor.is_some_and(|last| last != current)
+                    && let Err(e) = place(&window).and_then(|_| apply_hit_area(&window))
+                {
+                    log::warn!("failed to reposition notch: {e}");
                 }
                 last_monitor = Some(current);
             }

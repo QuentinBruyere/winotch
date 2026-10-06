@@ -5,9 +5,10 @@ use tauri::WebviewWindow;
 use crate::placement::Edge;
 use windows_sys::Win32::Foundation::RECT;
 use windows_sys::Win32::Graphics::Gdi::{
-    CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, GetMonitorInfoW,
+    CombineRgn, CreateRectRgn, CreateRoundRectRgn, DeleteObject, GetMonitorInfoW, HRGN,
     MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITORINFO, MonitorFromPoint,
-    MonitorFromWindow, RGN_OR, SetWindowRgn,
+    MonitorFromWindow, RDW_ERASE, RDW_FRAME, RDW_INVALIDATE, RDW_NOCHILDREN, RDW_UPDATENOW, RGN_OR,
+    RedrawWindow, SetWindowRgn,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     GWL_EXSTYLE, GWL_STYLE, GetClassNameW, GetForegroundWindow, GetWindowLongPtrW, GetWindowRect,
@@ -29,6 +30,22 @@ pub fn prepare_overlay(window: &WebviewWindow) -> tauri::Result<()> {
         if wanted != current {
             SetWindowLongPtrW(hwnd, GWL_EXSTYLE, wanted);
         }
+    }
+    Ok(())
+}
+
+/// Repaints the window itself, not its webview. Creating another window
+/// leaves white pixels in the notch window, behind its transparent webview,
+/// which show in the transparent margin around the shape until it repaints.
+pub fn repaint_host(window: &WebviewWindow) -> tauri::Result<()> {
+    let hwnd = window.hwnd()?.0;
+    unsafe {
+        RedrawWindow(
+            hwnd,
+            std::ptr::null(),
+            std::ptr::null_mut(),
+            RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_NOCHILDREN | RDW_UPDATENOW,
+        );
     }
     Ok(())
 }
@@ -97,33 +114,47 @@ pub fn foreground_class() -> String {
 }
 
 /// Physical pixels the window region extends past the drawn shape, so its
-/// anti-aliased edge is not cut (see `restrict_to_shape`).
+/// anti-aliased edge is not cut (see `card_region`).
 const AA_MARGIN: i32 = 2;
 
-/// Limits the window to the visible notch shape: outside this rectangle the
+/// Limits the window to the visible cards of the notch: outside them the
 /// window neither paints nor receives clicks, which go to the app below.
 /// Changing the region instead of resizing the window avoids the WebView2
-/// repaint flash a resize causes. Coordinates are physical, window-relative.
-/// A `detached` shape (pill style) has its four corners rounded.
-pub fn restrict_to_shape(
+/// repaint flash a resize causes.
+pub fn restrict_to_shapes(
     window: &WebviewWindow,
     edge: Edge,
-    shape: (i32, i32, i32, i32),
-    radius: i32,
-    detached: bool,
+    shapes: &[super::Shape],
 ) -> tauri::Result<()> {
     let hwnd = window.hwnd()?.0;
+    unsafe {
+        let region = CreateRectRgn(0, 0, 0, 0);
+        for shape in shapes {
+            let card = card_region(edge, shape);
+            CombineRgn(region, region, card, RGN_OR);
+            DeleteObject(card);
+        }
+        // The system owns the region once it is set: no DeleteObject.
+        SetWindowRgn(hwnd, region, 1);
+    }
+    Ok(())
+}
+
+/// Region of one card, owned by the caller. A `detached` card has its four
+/// corners rounded, an attached one only those away from its edge.
+/// Coordinates are physical, relative to the window.
+fn card_region(edge: Edge, shape: &super::Shape) -> HRGN {
     // The region is all-or-nothing per pixel: cut on the drawn outline, it
     // would chop the anti-aliased edge of the shape into visible steps. A
     // small margin keeps the smooth edge whole; the region's own steps then
     // fall on transparent pixels.
     let (x, y, width, height) = (
-        shape.0 - AA_MARGIN,
-        shape.1 - AA_MARGIN,
-        shape.2 + 2 * AA_MARGIN,
-        shape.3 + 2 * AA_MARGIN,
+        shape.x - AA_MARGIN,
+        shape.y - AA_MARGIN,
+        shape.width + 2 * AA_MARGIN,
+        shape.height + 2 * AA_MARGIN,
     );
-    let radius = radius + AA_MARGIN;
+    let radius = shape.radius + AA_MARGIN;
     // Square half on the attached side: only the inner corners are rounded.
     let (sx, sy, sw, sh) = match edge {
         Edge::Top => (x, y, width, height / 2),
@@ -132,20 +163,17 @@ pub fn restrict_to_shape(
         Edge::Right => (x + width / 2, y, width - width / 2, height),
     };
     unsafe {
-        // Rounded like the drawn shape, so the corners stay see-through even
-        // when the transparent webview briefly paints its white background.
-        // The +1: round regions exclude their right and bottom edges.
+        // Rounded like the drawn shape. The +1: round regions exclude their
+        // right and bottom edges.
         let region =
             CreateRoundRectRgn(x, y, x + width + 1, y + height + 1, 2 * radius, 2 * radius);
-        if !detached {
+        if !shape.detached {
             let square = CreateRectRgn(sx, sy, sx + sw, sy + sh);
             CombineRgn(region, region, square, RGN_OR);
             DeleteObject(square);
         }
-        // The system owns the region once it is set: no DeleteObject.
-        SetWindowRgn(hwnd, region, 1);
+        region
     }
-    Ok(())
 }
 
 // --- Cursor resistance (DF-0004): a low-level mouse hook on its own thread ---
