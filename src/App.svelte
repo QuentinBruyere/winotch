@@ -3,6 +3,8 @@
   import { listen } from '@tauri-apps/api/event'
   import Notch from './lib/Notch.svelte'
   import {
+    allItems,
+    moduleOf,
     newAlerts,
     soundFor,
     type Content,
@@ -10,10 +12,14 @@
     type Status,
     type Style,
   } from './lib/content'
+  import { repaint, repaintSoon, SAFETY_REPAINT_MS } from './lib/repaint'
   import { playSound } from './lib/sound'
+  import type { ModuleUis } from './modules'
+
+  let { moduleUis }: { moduleUis: ModuleUis } = $props()
 
   // Notch sizes in logical pixels (DF-0003, DF-0006). The window itself is
-  // fixed at the expanded maximum (tauri.conf.json: 380 x 174) and only its
+  // fixed at the expanded maximum (tauri.conf.json: 380 x MAX_HEIGHT) and only its
   // clickable area follows the shape; compact shapes must match `compact_shape`
   // in src-tauri/src/notch.rs. The cursor resistance follows the rounded corners.
   // A pill is fully rounded: its radius is half its thickness.
@@ -26,11 +32,14 @@
       : { width: 300, height: 36, radius: compactRadius(style) }
   const EXPANDED_WIDTH = 380
   const ROW_HEIGHT = 26
-  const MAX_ROWS = 6
+  // Added by the line between two modules (`.section + .section` in Notch.svelte).
+  const SEPARATOR_HEIGHT = 15
+  // The window height: past it, the open notch scrolls.
+  const MAX_HEIGHT = 174
   const ALERT_MS = 4000
   const ANIMATION_MS = 260
 
-  let content = $state<Content>({ items: [], notes: [] })
+  let content = $state<Content>({ sections: [], note: null })
   let status = $state<Status>({
     soundEnabled: true,
     edge: 'top',
@@ -41,13 +50,28 @@
   let notice = $state<string | null>(null)
   let hovered = $state(false)
   let alerting = $state(false)
+  // Modules whose alert opened the notch: only their part shows (DF-0011).
+  let alertModules = $state<Set<string>>(new Set())
 
   const vertical = $derived(status.edge === 'left' || status.edge === 'right')
   // Opens on hover even without items, to show the modules' notes (ADR-0009).
   // A vertical notch also opens to show notices. In move mode it stays
   // compact, so the shape being dragged does not change under the cursor.
   const expanded = $derived((hovered || alerting) && !notice && !status.movable)
-  const rows = $derived(content.items.length + content.notes.length)
+  // Hovered, every module shows; opened by an alert, only the alerting ones.
+  const visibleSections = $derived.by(() => {
+    if (hovered) return content.sections
+    const alerted = content.sections.filter((s) => alertModules.has(s.module))
+    return alerted.length > 0 ? alerted : content.sections
+  })
+  // A module without items still takes a row, for its note.
+  const rows = $derived(
+    Math.max(
+      1,
+      visibleSections.reduce((n, s) => n + Math.max(1, s.items.length), 0),
+    ),
+  )
+  const separators = $derived(Math.max(0, visibleSections.length - 1))
   const wideNotice = $derived(notice !== null && vertical)
   // Opening never makes the notch shorter than its compact shape: a vertical
   // notch (120 px tall) would otherwise shrink to one row (44 px) and leave
@@ -58,7 +82,12 @@
           width: EXPANDED_WIDTH,
           height: Math.max(
             compactShape(status.edge, status.style).height,
-            18 + Math.max(1, Math.min(wideNotice ? 1 : rows, MAX_ROWS)) * ROW_HEIGHT,
+            Math.min(
+              MAX_HEIGHT,
+              wideNotice
+                ? 18 + ROW_HEIGHT
+                : 18 + rows * ROW_HEIGHT + separators * SEPARATOR_HEIGHT,
+            ),
           ),
           radius: EXPANDED_RADIUS,
         }
@@ -94,7 +123,7 @@
   let alertTimer: ReturnType<typeof setTimeout> | undefined
 
   function onContent(next: Content) {
-    const alerts = newAlerts(content.items, next.items)
+    const alerts = newAlerts(allItems(content), allItems(next))
     content = next
     if (alerts.length === 0) return
 
@@ -103,6 +132,8 @@
     const kind = (['attention', 'error', 'done'] as const).find((k) => kinds.includes(k))
     if (kind && status.soundEnabled) playSound(kind)
 
+    // An alert arriving while another shows adds its module to the open notch.
+    alertModules = new Set([...(alerting ? alertModules : []), ...alerts.map(moduleOf)])
     alerting = true
     clearTimeout(alertTimer)
     alertTimer = setTimeout(() => (alerting = false), ALERT_MS)
@@ -129,12 +160,16 @@
     const unlisten = [
       listen<Content>('content-changed', (e) => onContent(e.payload)),
       listen<Status>('status-changed', (e) => (status = e.payload)),
+      listen('repaint', repaintSoon),
       listen<string>('notice', (e) => {
         notice = e.payload
         clearTimeout(noticeTimer)
         noticeTimer = setTimeout(() => (notice = null), 3000)
       }),
     ]
+    const safety = setInterval(() => {
+      if (document.visibilityState === 'visible') repaint()
+    }, SAFETY_REPAINT_MS)
     // Initial state: no sound or expansion for items that were already there.
     invoke<Content>('get_content').then((c) => (content = c))
     invoke<Status>('get_status').then((s) => (status = s))
@@ -143,14 +178,17 @@
       clearTimeout(noticeTimer)
       clearTimeout(alertTimer)
       clearTimeout(resizeTimer)
+      clearInterval(safety)
       unlisten.forEach((p) => p.then((off) => off()))
     }
   })
 </script>
 
 <Notch
-  items={content.items}
-  notes={content.notes}
+  sections={visibleSections}
+  allSections={content.sections}
+  note={content.note}
+  {moduleUis}
   {notice}
   edge={status.edge}
   style={status.style}

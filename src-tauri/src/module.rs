@@ -185,13 +185,25 @@ impl Host {
     }
 }
 
-/// Everything the notch draws, from every enabled module.
+/// What one enabled module shows: its own part of the notch (DF-0011).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Section {
+    /// Id of the module: the front picks its icon from it.
+    pub module: String,
+    pub items: Vec<Item>,
+    /// The module's placeholder, when it has no item.
+    pub note: Option<String>,
+}
+
+/// Everything the notch draws: one section per enabled module with
+/// something to show, in the user's order (DF-0011).
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Content {
-    pub items: Vec<Item>,
-    /// Placeholders of the enabled modules without items.
-    pub notes: Vec<String>,
+    pub sections: Vec<Section>,
+    /// Shown in the open notch when no module is enabled.
+    pub note: Option<String>,
 }
 
 /// A duration as a module would show it: "04:05", "1:02:03" past an hour.
@@ -208,22 +220,51 @@ pub(crate) fn is_enabled(module: &dyn Module, config: &config::Config) -> bool {
     config.module_enabled(module.id(), module.enabled_by_default())
 }
 
+/// The modules in the user's order: those listed in `order` first, the
+/// others (e.g. newly installed ones) after, in their declaration order.
+pub(crate) fn ordered<'a>(modules: &'a [Box<dyn Module>], order: &[String]) -> Vec<&'a dyn Module> {
+    let mut sorted: Vec<&dyn Module> = modules.iter().map(AsRef::as_ref).collect();
+    // Stable sort: unlisted modules keep their relative order, at the end.
+    sorted.sort_by_key(|m| {
+        order
+            .iter()
+            .position(|id| id == m.id())
+            .unwrap_or(usize::MAX)
+    });
+    sorted
+}
+
 pub(crate) fn content(modules: &[Box<dyn Module>], config: &config::Config) -> Content {
     let mut content = Content::default();
     let mut any_enabled = false;
-    for module in modules.iter().filter(|m| is_enabled(m.as_ref(), config)) {
+    for module in ordered(modules, &config.module_order)
+        .into_iter()
+        .filter(|m| is_enabled(*m, config))
+    {
         any_enabled = true;
-        let items = module.items();
-        if items.is_empty() {
-            content.notes.extend(module.placeholder());
+        let items: Vec<Item> = module
+            .items()
+            .into_iter()
+            .map(|item| Item {
+                id: format!("{}:{}", module.id(), item.id),
+                ..item
+            })
+            .collect();
+        let note = if items.is_empty() {
+            module.placeholder()
+        } else {
+            None
+        };
+        if !items.is_empty() || note.is_some() {
+            content.sections.push(Section {
+                module: module.id().into(),
+                items,
+                note,
+            });
         }
-        content.items.extend(items.into_iter().map(|item| Item {
-            id: format!("{}:{}", module.id(), item.id),
-            ..item
-        }));
     }
     if !any_enabled {
-        content.notes.push("Aucun module actif".into());
+        content.note = Some("Aucun module actif".into());
     }
     content
 }
@@ -288,9 +329,32 @@ mod tests {
     #[test]
     fn items_are_prefixed_and_empty_modules_give_their_placeholder() {
         let content = content(&modules(), &config::Config::default());
-        assert_eq!(content.items.len(), 1);
-        assert_eq!(content.items[0].id, "a:1");
-        assert_eq!(content.notes, vec!["b : rien".to_string()]);
+        assert_eq!(content.sections.len(), 2);
+        assert_eq!(content.sections[0].module, "a");
+        assert_eq!(content.sections[0].items[0].id, "a:1");
+        assert_eq!(content.sections[0].note, None);
+        assert!(content.sections[1].items.is_empty());
+        assert_eq!(content.sections[1].note.as_deref(), Some("b : rien"));
+        assert_eq!(content.note, None);
+    }
+
+    #[test]
+    fn sections_follow_the_user_order_unlisted_modules_last() {
+        let mut modules = modules();
+        modules.push(Box::new(Fake {
+            id: "c",
+            items: vec![item("1")],
+        }));
+        let config = config::Config {
+            module_order: vec!["c".into(), "a".into()],
+            ..config::Config::default()
+        };
+        let ids: Vec<_> = content(&modules, &config)
+            .sections
+            .into_iter()
+            .map(|s| s.module)
+            .collect();
+        assert_eq!(ids, ["c", "a", "b"]);
     }
 
     #[test]
@@ -298,11 +362,13 @@ mod tests {
         let mut config = config::Config::default();
         config.modules.entry("a".into()).or_default().enabled = Some(false);
         let content = content(&modules(), &config);
-        assert!(content.items.is_empty());
-        assert_eq!(content.notes, vec!["b : rien".to_string()]);
+        assert_eq!(content.sections.len(), 1);
+        assert_eq!(content.sections[0].module, "b");
+        assert_eq!(content.note, None);
 
         config.modules.entry("b".into()).or_default().enabled = Some(false);
         let content = super::content(&modules(), &config);
-        assert_eq!(content.notes, vec!["Aucun module actif".to_string()]);
+        assert!(content.sections.is_empty());
+        assert_eq!(content.note.as_deref(), Some("Aucun module actif"));
     }
 }

@@ -1,13 +1,16 @@
 <script lang="ts">
   import Pause from '@lucide/svelte/icons/pause'
   import Play from '@lucide/svelte/icons/play'
+  import Puzzle from '@lucide/svelte/icons/puzzle'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
+  import type { ModuleUis } from '../modules'
   import {
+    compactSection,
     mostUrgent,
     toneColor,
     type ActionIcon,
     type Edge,
-    type Item,
+    type Section,
     type Style,
   } from './content'
 
@@ -18,8 +21,10 @@
   }
 
   let {
-    items,
-    notes,
+    sections,
+    allSections,
+    note,
+    moduleUis,
     notice,
     edge,
     style,
@@ -37,8 +42,12 @@
     onpointermove,
     onpointerup,
   }: {
-    items: Item[]
-    notes: string[]
+    // Shown when open (all modules, or only the alerting ones).
+    sections: Section[]
+    // Every module, the compact notch picks one of them.
+    allSections: Section[]
+    note: string | null
+    moduleUis: ModuleUis
     notice: string | null
     edge: Edge
     style: Style
@@ -58,9 +67,16 @@
     onpointerup: () => void
   } = $props()
 
-  const top = $derived(mostUrgent(items))
-  // Only some items have a dot (a state), others just show text (the time).
-  const dotted = $derived(items.filter((i) => i.dot))
+  // The compact notch shows a single module (DF-0011). Only some items have
+  // a dot (a state, e.g. a Claude Code session), others just show text.
+  const shown = $derived(compactSection(allSections))
+  const top = $derived(shown && mostUrgent(shown.items))
+  const dotted = $derived(shown?.items.filter((i) => i.dot) ?? [])
+  const ShownIcon = $derived(shown ? iconOf(shown.module) : null)
+
+  function iconOf(module: string) {
+    return moduleUis[module]?.icon ?? Puzzle
+  }
   const vertical = $derived(edge === 'left' || edge === 'right')
 
   // Every shape is centered on the anchor along the edge, then kept inside the
@@ -127,62 +143,82 @@
     {#if notice}
       <span class="row compact"><span class="label">{notice}</span></span>
     {:else if expanded}
-      <!-- Without items, the notes alone are centered. -->
-      <ul class="list" class:centered={items.length === 0}>
-        {#each items as item (item.id)}
-          <li class="row">
-            {#if item.dot}
-              <span
-                class="dot"
-                class:pulse={item.tone === 'active'}
-                style:background={toneColor(item.tone)}
-              ></span>
-            {:else if dotted.length > 0}
-              <!-- Keeps the texts aligned with the dotted rows. -->
-              <span class="dot blank"></span>
-            {/if}
-            {#if item.title}<span class="title">{item.title}</span>{/if}
-            <span class="label" class:lead={!item.title}>
-              {item.label}{item.detail ? ` · ${item.detail}` : ''}
-            </span>
-            {#if item.actions.length > 0}
-              <span class="actions">
-                {#each item.actions as action (action.id)}
-                  {@const Icon = action.icon ? actionIcons[action.icon] : null}
-                  <button
-                    class="action"
-                    class:text={!Icon}
-                    title={action.label}
-                    aria-label={action.label}
-                    onclick={(e) => {
-                      // Not an acknowledgement of the whole notch.
-                      e.stopPropagation()
-                      onaction(item.id, action.id)
-                    }}
-                  >
-                    {#if Icon}<Icon size={13} strokeWidth={2.5} />{:else}{action.label}{/if}
-                  </button>
-                {/each}
-              </span>
-            {/if}
-          </li>
+      <div class="list" class:centered={sections.length === 0}>
+        {#each sections as section (section.module)}
+          {@const Icon = iconOf(section.module)}
+          {@const dottedRows = section.items.some((i) => i.dot)}
+          <!-- One part per module, its icon first (DF-0011). -->
+          <div class="section">
+            <span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>
+            <ul class="rows">
+              {#each section.items as item (item.id)}
+                <li class="row">
+                  {#if item.dot}
+                    <span
+                      class="dot"
+                      class:pulse={item.tone === 'active'}
+                      style:background={toneColor(item.tone)}
+                    ></span>
+                  {:else if dottedRows}
+                    <!-- Keeps the texts aligned with the dotted rows. -->
+                    <span class="dot blank"></span>
+                  {/if}
+                  {#if item.title}<span class="title">{item.title}</span>{/if}
+                  <span class="label" class:lead={!item.title}>
+                    {item.label}{item.detail ? ` · ${item.detail}` : ''}
+                  </span>
+                  {#if item.actions.length > 0}
+                    <span class="actions">
+                      {#each item.actions as action (action.id)}
+                        {@const ButtonIcon = action.icon ? actionIcons[action.icon] : null}
+                        <button
+                          class="action"
+                          class:text={!ButtonIcon}
+                          title={action.label}
+                          aria-label={action.label}
+                          onclick={(e) => {
+                            // Not an acknowledgement of the whole notch.
+                            e.stopPropagation()
+                            onaction(item.id, action.id)
+                          }}
+                        >
+                          {#if ButtonIcon}
+                            <ButtonIcon size={13} strokeWidth={2.5} />
+                          {:else}
+                            {action.label}
+                          {/if}
+                        </button>
+                      {/each}
+                    </span>
+                  {/if}
+                </li>
+              {/each}
+              <!-- A module without items still says how it is (ADR-0009). -->
+              {#if section.note}
+                <li class="row"><span class="label muted note">{section.note}</span></li>
+              {/if}
+            </ul>
+          </div>
+        {:else}
+          {#if note}<span class="row"><span class="label muted note">{note}</span></span>{/if}
         {/each}
-        <!-- Modules without items still say how they are (ADR-0009). -->
-        {#each notes as note, i (i)}
-          <li class="row"><span class="label muted note">{note}</span></li>
-        {/each}
-      </ul>
+      </div>
     {:else if vertical}
-      <!-- Thin vertical notch: dots only, details on hover. -->
-      <span class="dots column">
-        {#each dotted as item (item.id)}
-          <span
-            class="dot"
-            class:pulse={item.tone === 'active'}
-            style:background={toneColor(item.tone)}
-          ></span>
-        {/each}
-      </span>
+      <!-- Thin vertical notch: the shown module's dots, else its icon;
+           details on hover. -->
+      {#if dotted.length > 0}
+        <span class="dots column">
+          {#each dotted as item (item.id)}
+            <span
+              class="dot"
+              class:pulse={item.tone === 'active'}
+              style:background={toneColor(item.tone)}
+            ></span>
+          {/each}
+        </span>
+      {:else if ShownIcon}
+        <span class="module-icon"><ShownIcon size={14} strokeWidth={2.25} /></span>
+      {/if}
     {:else if top}
       <span class="row compact">
         {#if dotted.length > 0}
@@ -257,15 +293,48 @@
   }
 
   /* Fills the open notch and centers its rows: a vertical notch never gets
-     shorter than its compact shape, which leaves room around a short list. */
+     shorter than its compact shape, which leaves room around a short list.
+     Past the window height it scrolls ("safe": the top stays reachable). */
   .list {
-    list-style: none;
     box-sizing: border-box;
     height: 100%;
-    margin: 0;
     padding: 8px 0 10px;
     display: grid;
-    align-content: center;
+    align-content: safe center;
+    gap: 2px;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+
+  .section {
+    display: flex;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  /* Between two modules: a thin line. Its height (6 + 1 + 8 px) is
+     SEPARATOR_HEIGHT in App.svelte. */
+  .section + .section {
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 1px solid rgb(255 255 255 / 0.12);
+  }
+
+  .module-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    height: 24px;
+    opacity: 0.55;
+  }
+
+  .rows {
+    flex: 1;
+    min-width: 0;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
     gap: 2px;
   }
 

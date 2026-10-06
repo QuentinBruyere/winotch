@@ -13,5 +13,5 @@ export function start(moduleUis: ModuleUis) {
   const target = document.getElementById('app')!
   return label === 'settings'
     ? mount(Settings, { target, props: { moduleUis } })
-    : mount(App, { target })
+    : mount(App, { target, props: { moduleUis } })
 }

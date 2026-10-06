@@ -2,8 +2,10 @@
   import { getVersion } from '@tauri-apps/api/app'
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
+  import GripVertical from '@lucide/svelte/icons/grip-vertical'
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import SettingsIcon from '@lucide/svelte/icons/settings'
+  import { flip } from 'svelte/animate'
   import type { ModuleUis } from '../modules'
   import './settings.css'
 
@@ -97,6 +99,102 @@
     void run('set_module_enabled', { id: module.id, enabled })
   }
 
+  // Reordering the modules by dragging their handle (DF-0011). The grabbed
+  // card follows the pointer, the others slide out of its way; the list
+  // itself only changes on release, then the order is saved.
+  interface Drag {
+    from: number
+    to: number
+    // How far the grabbed card moved from its place, in px.
+    dy: number
+    startY: number
+    // Layout of the cards when the drag started, in list order.
+    tops: number[]
+    heights: number[]
+    // Room the grabbed card takes: its height plus the gap after it.
+    span: number
+  }
+  let drag = $state<Drag | null>(null)
+  // The new order, shown until the saved settings come back.
+  let localOrder = $state<string[] | null>(null)
+  const cards: Record<string, HTMLElement> = {}
+  const orderedModules = $derived.by(() => {
+    const modules = settings?.modules ?? []
+    if (!localOrder) return modules
+    return localOrder.flatMap((id) => modules.find((m) => m.id === id) ?? [])
+  })
+
+  // Pointer position in the scrolling area, so scrolling while dragging counts.
+  function pointerY(e: PointerEvent, card: HTMLElement) {
+    return e.clientY + ((card.offsetParent as HTMLElement | null)?.scrollTop ?? 0)
+  }
+
+  function startReorder(e: PointerEvent, id: string) {
+    if (e.button !== 0 || drag) return
+    const elements = orderedModules.map((m) => cards[m.id])
+    const from = orderedModules.findIndex((m) => m.id === id)
+    const card = elements[from]
+    if (!card || elements.some((el) => !el)) return
+    ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    const gap = parseFloat(getComputedStyle(card.offsetParent ?? card).rowGap) || 0
+    drag = {
+      from,
+      to: from,
+      dy: 0,
+      startY: pointerY(e, card),
+      tops: elements.map((el) => el.offsetTop),
+      heights: elements.map((el) => el.offsetHeight),
+      span: card.offsetHeight + gap,
+    }
+  }
+
+  function reorder(e: PointerEvent) {
+    if (!drag) return
+    const { from, tops, heights } = drag
+    const last = tops.length - 1
+    const card = cards[orderedModules[from].id]
+    // Kept within the list.
+    const dy = Math.min(
+      Math.max(pointerY(e, card) - drag.startY, tops[0] - tops[from]),
+      tops[last] + heights[last] - (tops[from] + heights[from]),
+    )
+    // A card passes another once its leading edge crosses the other's middle:
+    // its bottom going down, its top going up. With the middles, the last
+    // place could never be reached (the card stops at the end of the list).
+    const top = tops[from] + dy
+    const bottom = top + heights[from]
+    drag.dy = dy
+    drag.to = tops.filter((t, i) => {
+      const middle = t + heights[i] / 2
+      return i < from ? middle < top : i > from && middle < bottom
+    }).length
+  }
+
+  // Where each card is drawn while dragging, relative to its place.
+  function shift(index: number): number {
+    if (!drag) return 0
+    const { from, to } = drag
+    if (index === from) return drag.dy
+    if (from < index && index <= to) return -drag.span
+    if (to <= index && index < from) return drag.span
+    return 0
+  }
+
+  async function endReorder() {
+    if (!drag) return
+    const { from, to } = drag
+    const order = orderedModules.map((m) => m.id)
+    const [moved] = order.splice(from, 1)
+    order.splice(to, 0, moved)
+    // Same update: the list takes its new order as the shifts disappear, and
+    // the grabbed card glides from where it was dropped to its place.
+    drag = null
+    if (from === to) return
+    localOrder = order
+    await run('set_module_order', { order })
+    localOrder = null
+  }
+
   // The screen shown as selected: the chosen one, or the primary one by default.
   const selectedScreen = $derived(
     settings?.screen ?? settings?.screens.find((s) => s.primary)?.id ?? '',
@@ -111,6 +209,7 @@
 
   function load(next: Settings) {
     settings = next
+    if (!drag) localOrder = null
   }
 
   async function run(command: string, args: Record<string, unknown> = {}) {
@@ -404,11 +503,34 @@
         {/if}
       {:else if page === 'modules'}
         <h1>Modules</h1>
-        {#each settings.modules as module (module.id)}
+        <p class="intro">
+          Fais glisser un module par sa poignée pour choisir l'ordre d'affichage dans le notch : le
+          premier est le plus près du bord.
+        </p>
+        {#each orderedModules as module, index (module.id)}
           {@const ui = moduleUis[module.id]}
           {@const Icon = ui?.icon ?? Puzzle}
           {@const configurable = module.enabled && !!ui?.settings}
-          <section class="module-card" class:disabled={!module.enabled}>
+          <section
+            class="module-card"
+            class:disabled={!module.enabled}
+            class:dragged={drag?.from === index}
+            class:sliding={drag !== null && drag.from !== index}
+            style:transform={drag ? `translateY(${shift(index)}px)` : undefined}
+            bind:this={cards[module.id]}
+            animate:flip={{ duration: 150 }}
+          >
+            <button
+              class="grip"
+              title="Faire glisser pour changer l'ordre"
+              aria-label="Changer la place de {module.name}"
+              onpointerdown={(e) => startReorder(e, module.id)}
+              onpointermove={reorder}
+              onpointerup={endReorder}
+              onpointercancel={endReorder}
+            >
+              <GripVertical size={16} />
+            </button>
             <div class="module-icon"><Icon size={20} /></div>
             <div class="module-text">
               <div class="label">{module.name}</div>

@@ -75,6 +75,8 @@ html[data-window='settings'] {
   }
 
   & main {
+    /* Reference of the module cards' offsetTop, for reordering them. */
+    position: relative;
     overflow-y: auto;
     padding: 20px 24px 28px;
     display: grid;
@@ -108,6 +110,38 @@ html[data-window='settings'] {
     display: flex;
     align-items: center;
     gap: 14px;
+  }
+
+  & .intro {
+    margin: -6px 0 0;
+    color: var(--muted);
+  }
+
+  /* The module being dragged to a new place (DF-0011): it follows the
+     pointer, the others slide out of its way. */
+  & .module-card.dragged {
+    position: relative;
+    z-index: 1;
+    box-shadow: 0 6px 18px rgb(0 0 0 / 0.25);
+  }
+
+  & .module-card.sliding {
+    transition: transform 150ms ease;
+  }
+
+  & button.grip {
+    all: unset;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    margin-right: -6px;
+    color: var(--muted);
+    cursor: grab;
+    touch-action: none;
+  }
+
+  & .module-card.dragged button.grip {
+    cursor: grabbing;
   }
 
   & .module-icon {

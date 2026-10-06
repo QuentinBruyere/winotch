@@ -79,11 +79,10 @@ pub fn current(app: &AppHandle) -> Settings {
         resistance_strength: config.cursor_resistance_strength,
         resistance_available: cfg!(windows),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
-        modules: state
-            .modules
-            .iter()
+        modules: crate::module::ordered(&state.modules, &config.module_order)
+            .into_iter()
             .map(|m| {
-                let enabled = crate::module::is_enabled(m.as_ref(), &config);
+                let enabled = crate::module::is_enabled(m, &config);
                 ModuleInfo {
                     id: m.id().into(),
                     name: m.name().into(),
@@ -111,6 +110,8 @@ fn screen_choices(app: &AppHandle) -> Vec<ScreenChoice> {
 
 /// Opens the settings window, or brings it back to the front.
 pub fn open(app: &AppHandle) -> tauri::Result<()> {
+    // Opening another webview may leave a white edge around the notch.
+    notch::request_repaint(app);
     if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {
         window.unminimize()?;
         window.show()?;
@@ -128,6 +129,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
             notch::set_movable(&handle, false);
+            notch::request_repaint(&handle);
         }
     });
     platform::bring_to_front(&window)
@@ -297,6 +299,22 @@ pub fn set_module_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(
     changed(&app);
     crate::emit_content(&app);
     Ok(())
+}
+
+/// The user reordered the modules (DF-0011): `order` lists module ids, the
+/// first one closest to the edge. Unknown ids are dropped.
+#[tauri::command]
+pub fn set_module_order(app: AppHandle, order: Vec<String>) {
+    let known: Vec<String> = {
+        let state = app.state::<AppState>();
+        order
+            .into_iter()
+            .filter(|id| state.modules.iter().any(|m| m.id() == id))
+            .collect()
+    };
+    update_config(&app, |c| c.module_order = known);
+    changed(&app);
+    crate::emit_content(&app);
 }
 
 /// Action of a module's settings section, handled by the module itself.

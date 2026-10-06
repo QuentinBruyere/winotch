@@ -31,6 +31,9 @@ pub struct Config {
     pub placement: Placement,
     /// Per module, by module id (ADR-0009).
     pub modules: BTreeMap<String, ModuleEntry>,
+    /// Module ids in the user's display order (DF-0011); modules missing
+    /// from it come after, in their declaration order.
+    pub module_order: Vec<String>,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -64,6 +67,7 @@ impl Default for Config {
             hide_in_fullscreen: true,
             placement: Placement::default(),
             modules: BTreeMap::new(),
+            module_order: Vec::new(),
         }
     }
 }

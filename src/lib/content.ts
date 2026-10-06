@@ -27,11 +27,24 @@ export interface Item {
   actions: Action[]
 }
 
-// Mirrors `Content` in src-tauri/src/module.rs
-export interface Content {
+// Mirrors `Section` in src-tauri/src/module.rs: one module's part of the notch.
+export interface Section {
+  // Module id, picks the section's icon.
+  module: string
   items: Item[]
-  // Messages of the enabled modules without items, shown in the open notch.
-  notes: string[]
+  // The module's placeholder when it has no item, shown in the open notch.
+  note: string | null
+}
+
+// Mirrors `Content` in src-tauri/src/module.rs: sections in the user's order.
+export interface Content {
+  sections: Section[]
+  // Shown in the open notch when no module is enabled.
+  note: string | null
+}
+
+export function allItems(content: Content): Item[] {
+  return content.sections.flatMap((s) => s.items)
 }
 
 // Screen edge the notch is attached to, mirrors `Edge` in src-tauri/src/placement.rs
@@ -83,4 +96,26 @@ export function soundFor(tone: Tone): SoundKind | undefined {
 export function newAlerts(previous: Item[], next: Item[]): Item[] {
   const before = new Map(previous.map((i) => [i.id, i.tone]))
   return next.filter((i) => soundFor(i.tone) && before.get(i.id) !== i.tone)
+}
+
+// Module of an item, from its `<module id>:<item id>`.
+export function moduleOf(item: Item): string {
+  return item.id.split(':')[0]
+}
+
+// What the compact notch shows (DF-0011): the module with the most urgent
+// alert, else the first module with items, in the user's order.
+export function compactSection(sections: Section[]): Section | undefined {
+  let alert: Section | undefined
+  let rank = Infinity
+  for (const section of sections) {
+    for (const item of section.items) {
+      const r = priority.indexOf(item.tone)
+      if (soundFor(item.tone) && r < rank) {
+        alert = section
+        rank = r
+      }
+    }
+  }
+  return alert ?? sections.find((s) => s.items.length > 0)
 }

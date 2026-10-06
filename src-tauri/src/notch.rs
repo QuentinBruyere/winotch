@@ -2,7 +2,7 @@ use std::sync::Mutex;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
 
-use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
 
 use crate::placement::{self, Area, Edge, Placement, Screen, Style};
 use crate::resistance::Rect;
@@ -281,7 +281,18 @@ pub fn place(window: &WebviewWindow) -> tauri::Result<()> {
 /// Shows the notch and restores the overlay styles Tauri resets on show.
 pub fn show(window: &WebviewWindow) -> tauri::Result<()> {
     window.show()?;
-    platform::prepare_overlay(window)
+    platform::prepare_overlay(window)?;
+    request_repaint(window.app_handle());
+    Ok(())
+}
+
+/// Asks the notch to draw a fresh frame. WebView2 sometimes draws a frame
+/// with a white background instead of a transparent one, typically when
+/// another webview opens or the window is shown again: the white then
+/// shows in the margin of the window region around the shape (see
+/// `platform::restrict_to_shape`) until the next frame.
+pub fn request_repaint(app: &AppHandle) {
+    let _ = app.emit_to(NOTCH_LABEL, "repaint", ());
 }
 
 /// Shows or hides the notch on the user's request (tray menu).
@@ -316,10 +327,11 @@ pub fn spawn_watcher(app: AppHandle) {
 
             // Resolution, primary monitor or taskbar changed: re-place.
             if let Ok(Some(current)) = work_area(&window) {
-                if last_monitor.is_some_and(|last| last != current)
-                    && let Err(e) = place(&window).and_then(|_| apply_hit_area(&window))
-                {
-                    log::warn!("failed to reposition notch: {e}");
+                if last_monitor.is_some_and(|last| last != current) {
+                    if let Err(e) = place(&window).and_then(|_| apply_hit_area(&window)) {
+                        log::warn!("failed to reposition notch: {e}");
+                    }
+                    request_repaint(&app);
                 }
                 last_monitor = Some(current);
             }

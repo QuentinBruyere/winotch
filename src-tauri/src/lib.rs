@@ -174,6 +174,7 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_cursor_resistance,
             settings::set_autostart,
             settings::set_module_enabled,
+            settings::set_module_order,
             settings::module_call
         ])
         .setup(move |app| {
