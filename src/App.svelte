@@ -2,20 +2,28 @@
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import Notch from './lib/Notch.svelte'
-  import { newAlerts, soundFor, type Content, type Edge, type Status } from './lib/content'
+  import {
+    newAlerts,
+    soundFor,
+    type Content,
+    type Edge,
+    type Status,
+    type Style,
+  } from './lib/content'
   import { playSound } from './lib/sound'
 
   // Notch sizes in logical pixels (DF-0003, DF-0006). The window itself is
   // fixed at the expanded maximum (tauri.conf.json: 380 x 174) and only its
   // clickable area follows the shape; compact shapes must match `compact_shape`
   // in src-tauri/src/notch.rs. The cursor resistance follows the rounded corners.
-  const COMPACT_RADIUS = 14
+  // A pill is fully rounded: its radius is half its thickness.
+  const compactRadius = (style: Style) => (style === 'pill' ? 18 : 14)
   const EXPANDED_RADIUS = 20
   // Thin and vertical on the left / right edges.
-  const compactShape = (edge: Edge) =>
+  const compactShape = (edge: Edge, style: Style) =>
     edge === 'left' || edge === 'right'
-      ? { width: 36, height: 120, radius: COMPACT_RADIUS }
-      : { width: 300, height: 36, radius: COMPACT_RADIUS }
+      ? { width: 36, height: 120, radius: compactRadius(style) }
+      : { width: 300, height: 36, radius: compactRadius(style) }
   const EXPANDED_WIDTH = 380
   const ROW_HEIGHT = 26
   const MAX_ROWS = 6
@@ -26,6 +34,7 @@
   let status = $state<Status>({
     soundEnabled: true,
     edge: 'top',
+    style: 'notch',
     movable: false,
     anchor: null,
   })
@@ -48,12 +57,12 @@
       ? {
           width: EXPANDED_WIDTH,
           height: Math.max(
-            compactShape(status.edge).height,
+            compactShape(status.edge, status.style).height,
             18 + Math.max(1, Math.min(wideNotice ? 1 : rows, MAX_ROWS)) * ROW_HEIGHT,
           ),
           radius: EXPANDED_RADIUS,
         }
-      : compactShape(status.edge),
+      : compactShape(status.edge, status.style),
   )
   const open = $derived(expanded || wideNotice)
 
@@ -144,6 +153,7 @@
   notes={content.notes}
   {notice}
   edge={status.edge}
+  style={status.style}
   {expanded}
   width={shape.width}
   height={shape.height}

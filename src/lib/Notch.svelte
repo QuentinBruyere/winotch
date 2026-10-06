@@ -2,7 +2,14 @@
   import Pause from '@lucide/svelte/icons/pause'
   import Play from '@lucide/svelte/icons/play'
   import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
-  import { mostUrgent, toneColor, type ActionIcon, type Edge, type Item } from './content'
+  import {
+    mostUrgent,
+    toneColor,
+    type ActionIcon,
+    type Edge,
+    type Item,
+    type Style,
+  } from './content'
 
   const actionIcons: Record<ActionIcon, typeof Play> = {
     play: Play,
@@ -15,6 +22,7 @@
     notes,
     notice,
     edge,
+    style,
     expanded,
     width,
     height,
@@ -33,6 +41,7 @@
     notes: string[]
     notice: string | null
     edge: Edge
+    style: Style
     expanded: boolean
     width: number
     height: number
@@ -74,15 +83,18 @@
     }[edge],
   )
 
-  // Rounded corners on the inner side only, the attached side stays square
-  // (DF-0006). Order: top-left, top-right, bottom-right, bottom-left.
+  // A notch rounds its inner corners only, the attached side stays square
+  // (DF-0006); a pill rounds all four. Order: top-left, top-right,
+  // bottom-right, bottom-left.
   const corners = $derived(
-    {
-      top: `0 0 ${radius}px ${radius}px`,
-      bottom: `${radius}px ${radius}px 0 0`,
-      left: `0 ${radius}px ${radius}px 0`,
-      right: `${radius}px 0 0 ${radius}px`,
-    }[edge],
+    style === 'pill'
+      ? `${radius}px`
+      : {
+          top: `0 0 ${radius}px ${radius}px`,
+          bottom: `${radius}px ${radius}px 0 0`,
+          left: `0 ${radius}px ${radius}px 0`,
+          right: `${radius}px 0 0 ${radius}px`,
+        }[edge],
   )
 </script>
 
@@ -244,11 +256,16 @@
     justify-content: center;
   }
 
+  /* Fills the open notch and centers its rows: a vertical notch never gets
+     shorter than its compact shape, which leaves room around a short list. */
   .list {
     list-style: none;
+    box-sizing: border-box;
+    height: 100%;
     margin: 0;
     padding: 8px 0 10px;
     display: grid;
+    align-content: center;
     gap: 2px;
   }
 

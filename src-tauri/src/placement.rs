@@ -26,17 +26,44 @@ impl Edge {
     }
 }
 
+/// Look of the notch: glued to the edge, or a pill detached from it
+/// ("dynamic island", ADR-0003).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Style {
+    #[default]
+    Notch,
+    Pill,
+}
+
+/// Distance range between a pill and its screen edge, in logical pixels.
+pub const GAP_RANGE: std::ops::RangeInclusive<u32> = 4..=40;
+
 /// Saved in config.json. `offset` is the position of the notch center along
 /// the edge, from 0 (left / top end) to 1 (right / bottom end); 0.5 is
 /// centered. Dragging the
 /// notch along its edge only changes `offset` (step 3).
 /// `screen`: id of the chosen monitor, `None` = whichever is primary.
+/// `gap`: distance between a pill and the edge, logical pixels (unused by
+/// the notch style).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Placement {
     pub edge: Edge,
     pub offset: f64,
     pub screen: Option<String>,
+    pub style: Style,
+    pub gap: u32,
+}
+
+impl Placement {
+    /// Distance between the window and its edge, in physical pixels.
+    pub fn gap_px(&self, scale: f64) -> i32 {
+        match self.style {
+            Style::Notch => 0,
+            Style::Pill => (f64::from(self.gap) * scale).round() as i32,
+        }
+    }
 }
 
 impl Default for Placement {
@@ -45,6 +72,8 @@ impl Default for Placement {
             edge: Edge::Top,
             offset: 0.5,
             screen: None,
+            style: Style::Notch,
+            gap: 10,
         }
     }
 }
@@ -133,8 +162,15 @@ fn notch_center(offset: f64, begin: i32, length: i32, compact: i32) -> i32 {
 
 /// Places the notch window, glued to `placement.edge` of the monitor work
 /// area (so a bottom notch sits just above the taskbar) and kept fully inside
-/// it. `compact` is the length of the compact notch along the edge.
-pub fn layout(placement: &Placement, work_area: Area, window: (i32, i32), compact: i32) -> Layout {
+/// it; a pill sits `gap` physical pixels away from the edge. `compact` is the
+/// length of the compact notch along the edge.
+pub fn layout(
+    placement: &Placement,
+    work_area: Area,
+    window: (i32, i32),
+    compact: i32,
+    gap: i32,
+) -> Layout {
     let (width, height) = window;
     let (begin, length) = edge_span(placement.edge, work_area);
     let size = if placement.edge.is_vertical() {
@@ -146,10 +182,10 @@ pub fn layout(placement: &Placement, work_area: Area, window: (i32, i32), compac
     let start = (center - size / 2).clamp(begin, (begin + length - size).max(begin));
     let wa = work_area;
     let window = match placement.edge {
-        Edge::Top => (start, wa.y),
-        Edge::Bottom => (start, wa.y + wa.height - height),
-        Edge::Left => (wa.x, start),
-        Edge::Right => (wa.x + wa.width - width, start),
+        Edge::Top => (start, wa.y + gap),
+        Edge::Bottom => (start, wa.y + wa.height - height - gap),
+        Edge::Left => (wa.x + gap, start),
+        Edge::Right => (wa.x + wa.width - width - gap, start),
     };
     Layout {
         window,
@@ -230,9 +266,9 @@ mod tests {
         let placement = Placement {
             edge,
             offset,
-            screen: None,
+            ..Placement::default()
         };
-        layout(&placement, WORK_AREA, WINDOW, compact(edge))
+        layout(&placement, WORK_AREA, WINDOW, compact(edge), 0)
     }
 
     fn at(edge: Edge, offset: f64) -> (i32, i32) {
@@ -295,7 +331,7 @@ mod tests {
             ..Placement::default()
         };
         assert_eq!(
-            layout(&placement, second, WINDOW, 300).window,
+            layout(&placement, second, WINDOW, 300, 0).window,
             (-1920 + 960 - 190, 200 + 1040 - 174)
         );
     }
@@ -318,9 +354,25 @@ mod tests {
         let start = Placement {
             edge,
             offset,
-            screen: None,
+            ..Placement::default()
         };
         dragged_offset(&start, WORK_AREA, compact(edge), delta, 10)
+    }
+
+    #[test]
+    fn a_pill_stands_off_its_edge() {
+        let pill = |edge| Placement {
+            edge,
+            style: Style::Pill,
+            ..Placement::default()
+        };
+        let window = |edge| layout(&pill(edge), WORK_AREA, WINDOW, compact(edge), 15).window;
+        assert_eq!(window(Edge::Top), (1090, 15));
+        assert_eq!(window(Edge::Bottom), (1090, 1392 - 174 - 15));
+        assert_eq!(window(Edge::Left), (15, 696 - 87));
+        assert_eq!(window(Edge::Right), (2560 - 380 - 15, 696 - 87));
+        assert_eq!(pill(Edge::Top).gap_px(1.5), 15);
+        assert_eq!(Placement::default().gap_px(1.5), 0);
     }
 
     #[test]
@@ -350,7 +402,7 @@ mod tests {
         let back = Placement {
             edge: Edge::Top,
             offset,
-            screen: None,
+            ..Placement::default()
         };
         let offset = dragged_offset(&back, WORK_AREA, 300, 100, 10);
         assert_eq!(at(Edge::Top, offset), (250 - 190, 0));

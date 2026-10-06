@@ -10,12 +10,15 @@
   let { moduleUis }: { moduleUis: ModuleUis } = $props()
 
   // Mirrors `Settings` in src-tauri/src/settings.rs
-  type Strength = 'soft' | 'medium' | 'strong'
+  type Strength = 'soft' | 'medium' | 'strong' | 'veryStrong' | 'impassable'
   type Edge = 'top' | 'bottom' | 'left' | 'right'
+  type Style = 'notch' | 'pill'
   interface Settings {
     soundEnabled: boolean
     hideInFullscreen: boolean
     edge: Edge
+    style: Style
+    gap: number
     screen: string | null
     screens: { id: string; label: string; primary: boolean }[]
     movable: boolean
@@ -46,6 +49,17 @@
     { id: 'about', label: 'À propos' },
   ]
 
+  const styleChoices: { value: Style; label: string }[] = [
+    { value: 'notch', label: 'Notch' },
+    { value: 'pill', label: 'Pilule' },
+  ]
+
+  // Shown while the slider moves, saved when it is released.
+  let gap = $state(10)
+  $effect(() => {
+    if (settings) gap = settings.gap
+  })
+
   const edgeChoices: { value: Edge; label: string }[] = [
     { value: 'top', label: 'Haut' },
     { value: 'bottom', label: 'Bas' },
@@ -59,6 +73,8 @@
     { value: 'soft', label: 'Douce' },
     { value: 'medium', label: 'Moyenne' },
     { value: 'strong', label: 'Forte' },
+    { value: 'veryStrong', label: 'Très forte' },
+    { value: 'impassable', label: 'Infranchissable' },
   ]
 
   let settings = $state<Settings | null>(null)
@@ -105,6 +121,15 @@
       error = String(e)
     }
   }
+
+  // Position of the notched slider, follows the saved setting.
+  let resistanceIndex = $state(0)
+  $effect(() => {
+    resistanceIndex = Math.max(
+      0,
+      resistanceChoices.findIndex((c) => c.value === resistance),
+    )
+  })
 
   function setResistance(choice: ResistanceChoice) {
     void run('set_cursor_resistance', {
@@ -183,6 +208,47 @@
         <h1>Affichage</h1>
         <section>
           <div class="stack">
+            <div>
+              <div class="label">Forme</div>
+              <div class="hint">
+                Notch collé au bord de l'écran, ou pilule détachée du bord, façon Dynamic Island.
+              </div>
+            </div>
+            <div
+              class="segmented"
+              style:grid-template-columns="repeat(2, 1fr)"
+              role="radiogroup"
+              aria-label="Forme"
+            >
+              {#each styleChoices as choice (choice.value)}
+                <button
+                  role="radio"
+                  aria-checked={settings.style === choice.value}
+                  class:selected={settings.style === choice.value}
+                  onclick={() => run('set_style', { style: choice.value })}
+                >
+                  {choice.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+          {#if settings.style === 'pill'}
+            <label class="row separated">
+              <div>
+                <div class="label">Écart avec le bord</div>
+                <div class="hint">{gap} px</div>
+              </div>
+              <input
+                type="range"
+                min="4"
+                max="40"
+                step="1"
+                bind:value={gap}
+                onchange={() => run('set_gap', { gap })}
+              />
+            </label>
+          {/if}
+          <div class="stack separated">
             <div>
               <div class="label">Position du notch</div>
               <div class="hint">
@@ -269,25 +335,44 @@
             <div>
               <div class="label">Résistance au bord du notch</div>
               <div class="hint">
-                {#if settings.resistanceAvailable}
-                  Le curseur bute contre le notch : il faut pousser pour entrer.
-                {:else}
+                {#if !settings.resistanceAvailable}
                   Disponible uniquement sous Windows pour l'instant.
+                {:else if resistance === 'impassable'}
+                  Le curseur ne peut plus entrer : le notch ne s'ouvre plus au survol ni ne se
+                  clique, seules les alertes l'ouvrent. Le mode déplacement suspend la résistance.
+                {:else}
+                  Le curseur bute contre le notch : il faut pousser pour entrer.
                 {/if}
               </div>
             </div>
-            <div class="segmented" role="radiogroup" aria-label="Résistance du curseur">
-              {#each resistanceChoices as choice (choice.value)}
-                <button
-                  role="radio"
-                  aria-checked={resistance === choice.value}
-                  class:selected={resistance === choice.value}
-                  disabled={!settings.resistanceAvailable}
-                  onclick={() => setResistance(choice.value)}
-                >
-                  {choice.label}
-                </button>
-              {/each}
+            <!-- Notched slider: one stop per preset, labels under the stops. -->
+            <div class="notched">
+              <input
+                type="range"
+                min="0"
+                max={resistanceChoices.length - 1}
+                step="1"
+                aria-label="Résistance du curseur"
+                aria-valuetext={resistanceChoices[resistanceIndex].label}
+                disabled={!settings.resistanceAvailable}
+                bind:value={resistanceIndex}
+                onchange={() => setResistance(resistanceChoices[resistanceIndex].value)}
+              />
+              <div class="stops">
+                {#each resistanceChoices as choice, i (choice.value)}
+                  <button
+                    class:selected={resistanceIndex === i}
+                    style:left="{(i / (resistanceChoices.length - 1)) * 100}%"
+                    disabled={!settings.resistanceAvailable}
+                    onclick={() => {
+                      resistanceIndex = i
+                      setResistance(choice.value)
+                    }}
+                  >
+                    {choice.label}
+                  </button>
+                {/each}
+              </div>
             </div>
           </div>
         </section>

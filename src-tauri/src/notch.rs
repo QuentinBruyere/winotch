@@ -4,7 +4,7 @@ use std::time::Duration;
 
 use tauri::{AppHandle, Manager, PhysicalPosition, WebviewWindow};
 
-use crate::placement::{self, Area, Edge, Placement, Screen};
+use crate::placement::{self, Area, Edge, Placement, Screen, Style};
 use crate::resistance::Rect;
 use crate::{AppState, NOTCH_LABEL, platform};
 
@@ -31,19 +31,24 @@ pub fn anchor() -> Option<f64> {
     *ANCHOR.lock().unwrap()
 }
 
-/// Compact shape per edge; must match `compactShape` in src/App.svelte and
-/// `--notch-radius` in src/app.css.
-fn compact_shape(edge: Edge) -> (f64, f64, f64) {
+/// Compact shape per edge and style; must match `compactShape` in
+/// src/App.svelte and `--notch-radius` in src/app.css. A pill is fully
+/// rounded: its radius is half its thickness.
+fn compact_shape(edge: Edge, style: Style) -> (f64, f64, f64) {
+    let radius = match style {
+        Style::Notch => 14.0,
+        Style::Pill => 18.0,
+    };
     if edge.is_vertical() {
-        (36.0, 120.0, 14.0)
+        (36.0, 120.0, radius)
     } else {
-        (300.0, 36.0, 14.0)
+        (300.0, 36.0, radius)
     }
 }
 
 /// Length of the compact notch along `edge`, in physical pixels.
 fn compact_length(window: &WebviewWindow, edge: Edge) -> tauri::Result<i32> {
-    let (width, height, _) = compact_shape(edge);
+    let (width, height, _) = compact_shape(edge, Style::Notch);
     let length = if edge.is_vertical() { height } else { width };
     Ok((length * window.scale_factor()?).round() as i32)
 }
@@ -74,11 +79,12 @@ pub fn set_hit_area(
 /// gives the same shape in screen coordinates to the cursor resistance
 /// (DF-0004). Re-applied after moves, DPI or placement changes.
 pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
-    let edge = current_placement(window).edge;
+    let placement = current_placement(window);
+    let (edge, detached) = (placement.edge, placement.style == Style::Pill);
     let (width, height, radius) = HIT_AREA
         .lock()
         .unwrap()
-        .unwrap_or_else(|| compact_shape(edge));
+        .unwrap_or_else(|| compact_shape(edge, placement.style));
     let scale = window.scale_factor()?;
     // Window regions are relative to the outer window rectangle. The inner
     // size is also wrong before the first show (Windows still counts a frame).
@@ -95,7 +101,7 @@ pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
     };
     let (x, y) = placement::shape_in_window(edge, size, shape, anchor);
     let radius = (radius * scale).round() as i32;
-    platform::restrict_to_shape(window, edge, (x, y, shape.0, shape.1), radius)?;
+    platform::restrict_to_shape(window, edge, (x, y, shape.0, shape.1), radius, detached)?;
 
     let position = window.outer_position()?;
     platform::set_resistance_rect(Rect {
@@ -105,6 +111,7 @@ pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
         bottom: position.y + y + shape.1,
         radius,
         attached: edge,
+        detached,
     });
     Ok(())
 }
@@ -259,6 +266,7 @@ pub fn place(window: &WebviewWindow) -> tauri::Result<()> {
         area,
         (size.width as i32, size.height as i32),
         compact_length(window, placement.edge)?,
+        placement.gap_px(window.scale_factor()?),
     );
     window.set_position(PhysicalPosition::new(layout.window.0, layout.window.1))?;
 

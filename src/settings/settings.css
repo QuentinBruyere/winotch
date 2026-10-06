@@ -280,6 +280,45 @@ html[data-window='settings'] {
     color: var(--text);
   }
 
+  & input[type='range'] {
+    width: 200px;
+    accent-color: var(--accent);
+  }
+
+  /* Notched slider: the track spans the stops, whose labels sit under
+     them; the side padding keeps the end labels inside the card. */
+  & .notched {
+    padding: 0 44px;
+  }
+
+  & .notched input[type='range'] {
+    width: 100%;
+    margin: 0;
+  }
+
+  & .stops {
+    position: relative;
+    height: 22px;
+    /* The thumb centre runs from half a thumb in, to half a thumb from the end. */
+    margin: 2px 8px 0;
+  }
+
+  & .stops button {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    border: none;
+    background: transparent;
+    padding: 2px 4px;
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  & .stops button.selected {
+    color: var(--text);
+    font-weight: 600;
+  }
+
   & input[type='text'] {
     font: inherit;
     width: 120px;

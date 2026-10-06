@@ -27,6 +27,7 @@ pub fn restrict_to_shape(
     _edge: crate::placement::Edge,
     shape: (i32, i32, i32, i32),
     _radius: i32,
+    _detached: bool,
 ) -> tauri::Result<()> {
     let (_, _, width, height) = shape;
     window.set_size(tauri::PhysicalSize::new(width as u32, height as u32))?;

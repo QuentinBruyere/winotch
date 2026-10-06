@@ -6,7 +6,8 @@ use crate::placement::Edge as Side;
 /// The notch shape in physical screen pixels: a rectangle (`right` and
 /// `bottom` exclusive) glued to the screen edge `attached`, whose two
 /// corners on the inside of the screen are rounded with `radius`, exactly
-/// like the drawn notch.
+/// like the drawn notch. A `detached` shape (the pill style) stands off that
+/// edge and has its four corners rounded.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Rect {
     pub left: i32,
@@ -15,6 +16,7 @@ pub struct Rect {
     pub bottom: i32,
     pub radius: i32,
     pub attached: Side,
+    pub detached: bool,
 }
 
 impl Rect {
@@ -34,14 +36,16 @@ impl Rect {
         let (x, y) = (f64::from(point.0) + 0.5, f64::from(point.1) + 0.5);
         let (left, top) = (f64::from(self.left), f64::from(self.top));
         let (right, bottom) = (f64::from(self.right), f64::from(self.bottom));
-        // The two rounded corners are on the inner side, opposite the
-        // attached edge: (is_left, is_top) for each.
-        let corners = match self.attached {
-            Side::Top => [(true, false), (false, false)],
-            Side::Bottom => [(true, true), (false, true)],
-            Side::Left => [(false, true), (false, false)],
-            Side::Right => [(true, true), (true, false)],
+        // The rounded corners: the two on the inner side, opposite the
+        // attached edge, or all four when detached. (is_left, is_top) each.
+        let all = [(true, true), (false, true), (true, false), (false, false)];
+        let inner: &[(bool, bool)] = match self.attached {
+            Side::Top => &[(true, false), (false, false)],
+            Side::Bottom => &[(true, true), (false, true)],
+            Side::Left => &[(false, true), (false, false)],
+            Side::Right => &[(true, true), (true, false)],
         };
+        let corners = if self.detached { &all[..] } else { inner };
         corners.iter().all(|&(is_left, is_top)| {
             let cx = if is_left { left + r } else { right - r };
             let cy = if is_top { top + r } else { bottom - r };
@@ -60,15 +64,21 @@ pub enum Strength {
     #[default]
     Medium,
     Strong,
+    VeryStrong,
+    /// Never lets the cursor in: only alerts open the notch.
+    Impassable,
 }
 
 impl Strength {
-    /// Push distance (physical px, summed over the blocked moves) to get through.
+    /// Push distance (physical px, summed over the blocked moves) to get
+    /// through; infinite when impassable.
     pub fn breakthrough(self) -> f64 {
         match self {
             Strength::Soft => 40.0,
             Strength::Medium => 80.0,
-            Strength::Strong => 150.0,
+            Strength::Strong => 250.0,
+            Strength::VeryStrong => 500.0,
+            Strength::Impassable => f64::INFINITY,
         }
     }
 }
@@ -114,6 +124,20 @@ enum Edge {
 }
 
 impl Edge {
+    /// The edge of `rect` nearest to `point`, which lies inside its bounds.
+    fn nearest(rect: Rect, point: (i32, i32)) -> Edge {
+        let distances = [
+            (rect.bottom - point.1, Edge::Bottom),
+            (point.1 - rect.top, Edge::Top),
+            (point.0 - rect.left, Edge::Left),
+            (rect.right - point.0, Edge::Right),
+        ];
+        distances
+            .into_iter()
+            .min_by_key(|&(d, _)| d)
+            .map_or(Edge::Bottom, |(_, e)| e)
+    }
+
     /// The edge the cursor crosses when going from `from` (outside) into `rect`.
     fn crossed(rect: Rect, from: (i32, i32)) -> Edge {
         if from.1 >= rect.bottom {
@@ -162,8 +186,12 @@ impl Edge {
 }
 
 /// True when `to` lies past the screen edge the notch is attached to, where it
-/// may be off-screen (cheap check before asking the OS about monitors).
+/// may be off-screen (cheap check before asking the OS about monitors). Never
+/// for a detached pill: the screen edge is not part of it.
 pub fn beyond_attached_edge(rect: Rect, to: (i32, i32)) -> bool {
+    if rect.detached {
+        return false;
+    }
     match rect.attached {
         Side::Top => to.1 < rect.top,
         Side::Bottom => to.1 >= rect.bottom,
@@ -222,11 +250,14 @@ impl Resistance {
         self.events += 1;
 
         // Coming from a transparent corner (inside the bounding rectangle but
-        // outside the shape): the corners are on the inner side, so it is an
-        // inner entry, and the cursor stays where it was, just outside the curve.
+        // outside the shape): the cursor stays where it was, just outside the
+        // curve. A notch's corners are on its inner side, so it is an inner
+        // entry; a pill's may be anywhere, the nearest edge is the one pushed.
         let from_corner = rect.in_bounds(from);
         let inner = Edge::inner(rect.attached);
-        let edge = if from_corner {
+        let edge = if from_corner && rect.detached {
+            Edge::nearest(rect, from)
+        } else if from_corner {
             inner
         } else {
             Edge::crossed(rect, from)
@@ -264,6 +295,7 @@ mod tests {
         bottom: 36,
         radius: 14,
         attached: Side::Top,
+        detached: false,
     };
 
     /// Pushes `step` px into the notch every `every_ms` from `from`, held
@@ -419,11 +451,47 @@ mod tests {
             bottom: 720,
             radius: 14,
             attached: Side::Left,
+            detached: false,
         };
         assert!(!left.contains((35, 600)));
         assert!(!left.contains((35, 719)));
         assert!(left.contains((0, 600)));
         assert!(left.contains((20, 660)));
+    }
+
+    #[test]
+    fn impassable_never_lets_the_cursor_in() {
+        let mut r = Resistance::default();
+        let wall = Strength::Impassable.breakthrough();
+        for i in 1..=2000 {
+            assert_eq!(
+                r.on_move(NOTCH, (1200, 37), (1200, 20), i * 5, wall),
+                Verdict::Hold(1200, 36)
+            );
+        }
+    }
+
+    #[test]
+    fn a_pill_is_rounded_all_round_and_resists_from_every_side() {
+        // A 300 x 36 pill, 10 px below the top of the screen.
+        let pill = Rect {
+            top: 10,
+            bottom: 46,
+            radius: 18,
+            detached: true,
+            ..NOTCH
+        };
+        assert!(!pill.contains((1130, 10)));
+        assert!(!pill.contains((1429, 45)));
+        assert!(pill.contains((1280, 10)));
+        // From the gap above the pill: held against its top edge.
+        let mut r = Resistance::default();
+        assert_eq!(
+            r.on_move(pill, (1280, 5), (1280, 15), 0, MEDIUM),
+            Verdict::Hold(1280, 9)
+        );
+        // The screen edge is not the pill's: nothing to clip.
+        assert!(!beyond_attached_edge(pill, (1280, 5)));
     }
 
     #[test]
@@ -435,6 +503,7 @@ mod tests {
             bottom: 720,
             radius: 14,
             attached: Side::Right,
+            detached: false,
         };
         // Cursor on the right screen border, pushed right and down: Windows
         // requests x = 2563 (off-screen), then clamps it inside the notch.

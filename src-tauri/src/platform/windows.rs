@@ -96,18 +96,34 @@ pub fn foreground_class() -> String {
     unsafe { class_name(GetForegroundWindow()) }
 }
 
+/// Physical pixels the window region extends past the drawn shape, so its
+/// anti-aliased edge is not cut (see `restrict_to_shape`).
+const AA_MARGIN: i32 = 2;
+
 /// Limits the window to the visible notch shape: outside this rectangle the
 /// window neither paints nor receives clicks, which go to the app below.
 /// Changing the region instead of resizing the window avoids the WebView2
 /// repaint flash a resize causes. Coordinates are physical, window-relative.
+/// A `detached` shape (pill style) has its four corners rounded.
 pub fn restrict_to_shape(
     window: &WebviewWindow,
     edge: Edge,
     shape: (i32, i32, i32, i32),
     radius: i32,
+    detached: bool,
 ) -> tauri::Result<()> {
     let hwnd = window.hwnd()?.0;
-    let (x, y, width, height) = shape;
+    // The region is all-or-nothing per pixel: cut on the drawn outline, it
+    // would chop the anti-aliased edge of the shape into visible steps. A
+    // small margin keeps the smooth edge whole; the region's own steps then
+    // fall on transparent pixels.
+    let (x, y, width, height) = (
+        shape.0 - AA_MARGIN,
+        shape.1 - AA_MARGIN,
+        shape.2 + 2 * AA_MARGIN,
+        shape.3 + 2 * AA_MARGIN,
+    );
+    let radius = radius + AA_MARGIN;
     // Square half on the attached side: only the inner corners are rounded.
     let (sx, sy, sw, sh) = match edge {
         Edge::Top => (x, y, width, height / 2),
@@ -121,9 +137,11 @@ pub fn restrict_to_shape(
         // The +1: round regions exclude their right and bottom edges.
         let region =
             CreateRoundRectRgn(x, y, x + width + 1, y + height + 1, 2 * radius, 2 * radius);
-        let square = CreateRectRgn(sx, sy, sx + sw, sy + sh);
-        CombineRgn(region, region, square, RGN_OR);
-        DeleteObject(square);
+        if !detached {
+            let square = CreateRectRgn(sx, sy, sx + sw, sy + sh);
+            CombineRgn(region, region, square, RGN_OR);
+            DeleteObject(square);
+        }
         // The system owns the region once it is set: no DeleteObject.
         SetWindowRgn(hwnd, region, 1);
     }
@@ -164,7 +182,7 @@ pub fn take_breakthrough() -> Option<Breakthrough> {
 }
 
 /// Notch rectangle in physical screen pixels, read by the hook on every move.
-static NOTCH_RECT: [AtomicI32; 6] = [const { AtomicI32::new(0) }; 6];
+static NOTCH_RECT: [AtomicI32; 7] = [const { AtomicI32::new(0) }; 7];
 /// Push distance to get through, in px (from the chosen `Strength`).
 static BREAKTHROUGH: AtomicU32 = AtomicU32::new(80);
 /// Whether the hook should be installed.
@@ -179,6 +197,7 @@ thread_local! {
 }
 
 pub fn set_resistance_strength(strength: Strength) {
+    // An infinite (impassable) threshold saturates to u32::MAX, read back as infinite.
     BREAKTHROUGH.store(strength.breakthrough() as u32, Ordering::Relaxed);
 }
 
@@ -190,13 +209,14 @@ pub fn set_resistance_rect(rect: Rect) {
         rect.bottom,
         rect.radius,
         rect.attached as i32,
+        i32::from(rect.detached),
     ]) {
         slot.store(value, Ordering::Relaxed);
     }
 }
 
 fn load_rect() -> Rect {
-    let [left, top, right, bottom, radius, attached] =
+    let [left, top, right, bottom, radius, attached, detached] =
         NOTCH_RECT.each_ref().map(|v| v.load(Ordering::Relaxed));
     let attached = match attached {
         1 => Edge::Bottom,
@@ -211,6 +231,7 @@ fn load_rect() -> Rect {
         bottom,
         radius,
         attached,
+        detached: detached != 0,
     }
 }
 
@@ -281,7 +302,10 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: WPARAM, lparam: LPARAM) 
                     (from.x, from.y),
                     to,
                     info.time,
-                    f64::from(BREAKTHROUGH.load(Ordering::Relaxed)),
+                    match BREAKTHROUGH.load(Ordering::Relaxed) {
+                        u32::MAX => f64::INFINITY,
+                        px => f64::from(px),
+                    },
                 )
             });
             match verdict {

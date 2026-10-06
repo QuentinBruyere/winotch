@@ -10,7 +10,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::module::Host;
-use crate::placement::{self, Edge};
+use crate::placement::{self, Edge, GAP_RANGE, Style};
 use crate::resistance::Strength;
 use crate::{AppState, config, notch, platform};
 
@@ -43,6 +43,9 @@ pub struct Settings {
     sound_enabled: bool,
     hide_in_fullscreen: bool,
     edge: Edge,
+    /// Notch or pill, and the pill's distance to the edge (ADR-0003).
+    style: Style,
+    gap: u32,
     /// Chosen screen, `None` = the primary one.
     screen: Option<String>,
     screens: Vec<ScreenChoice>,
@@ -66,6 +69,8 @@ pub fn current(app: &AppHandle) -> Settings {
         sound_enabled: config.sound_enabled,
         hide_in_fullscreen: config.hide_in_fullscreen,
         edge: config.placement.edge,
+        style: config.placement.style,
+        gap: config.placement.gap,
         screen: config.placement.screen.clone(),
         screens: screen_choices(app),
         movable: state.movable.load(Ordering::Relaxed),
@@ -168,6 +173,39 @@ pub fn set_edge(app: AppHandle, edge: Edge) -> Result<(), String> {
             .map_err(|e| e.to_string())?;
     }
     changed(&app);
+    Ok(())
+}
+
+/// Notch glued to the edge, or pill detached from it (ADR-0003).
+#[tauri::command]
+pub fn set_style(app: AppHandle, style: Style) -> Result<(), String> {
+    update_config(&app, |c| c.placement.style = style);
+    notch::reset_hit_area();
+    replace(&app)
+}
+
+/// Distance between the pill and its edge, in logical pixels.
+#[tauri::command]
+pub fn set_gap(app: AppHandle, gap: u32) -> Result<(), String> {
+    if !GAP_RANGE.contains(&gap) {
+        return Err(format!(
+            "Écart entre {} et {} px",
+            GAP_RANGE.start(),
+            GAP_RANGE.end()
+        ));
+    }
+    update_config(&app, |c| c.placement.gap = gap);
+    replace(&app)
+}
+
+/// Puts the notch window back where the placement says, with its shape.
+fn replace(app: &AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window(crate::NOTCH_LABEL) {
+        notch::place(&window)
+            .and_then(|_| notch::apply_hit_area(&window))
+            .map_err(|e| e.to_string())?;
+    }
+    changed(app);
     Ok(())
 }
 

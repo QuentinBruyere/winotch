@@ -37,10 +37,15 @@ export interface Content {
 // Screen edge the notch is attached to, mirrors `Edge` in src-tauri/src/placement.rs
 export type Edge = 'top' | 'bottom' | 'left' | 'right'
 
+// Notch glued to the edge or pill detached from it, mirrors `Style` in
+// src-tauri/src/placement.rs
+export type Style = 'notch' | 'pill'
+
 // Mirrors `Status` in src-tauri/src/lib.rs
 export interface Status {
   soundEnabled: boolean
   edge: Edge
+  style: Style
   // Move mode: the notch can be dragged along its edge (DF-0006)
   movable: boolean
   // Center of the compact notch along the edge, from the start of the window,

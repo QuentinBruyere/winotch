@@ -36,6 +36,8 @@ pub struct Status {
     sound_enabled: bool,
     /// Screen edge the notch is attached to: drives its orientation.
     edge: placement::Edge,
+    /// Notch glued to the edge, or pill detached from it: drives its corners.
+    style: placement::Style,
     /// Move mode: the notch can be dragged along its edge.
     movable: bool,
     /// Center of the compact notch along the edge, from the start of the
@@ -117,6 +119,7 @@ fn status(state: &AppState) -> Status {
     Status {
         sound_enabled: config.sound_enabled,
         edge: config.placement.edge,
+        style: config.placement.style,
         movable: state.movable.load(Ordering::Relaxed),
         anchor: notch::anchor(),
     }
@@ -163,6 +166,8 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_sound,
             settings::set_hide_in_fullscreen,
             settings::set_edge,
+            settings::set_style,
+            settings::set_gap,
             settings::set_screen,
             settings::set_movable,
             settings::recenter,
