@@ -14,7 +14,7 @@
       {
         "label": "notch",
         "title": "winotch",
-        "width": 380,
+        "width": 1100,
         "height": 300,
         "resizable": false,
         "maximizable": false,

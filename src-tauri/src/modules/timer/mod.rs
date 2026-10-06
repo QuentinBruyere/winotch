@@ -45,9 +45,10 @@ impl Settings {
 
     fn validate(mut self) -> Result<Self, String> {
         let valid = |m: u64| (1..=MAX_MINUTES).contains(&m);
-        if !valid(self.default_minutes) {
+        // A timer may start from zero: its minutes are then added in the notch.
+        if self.default_minutes > MAX_MINUTES {
             return Err(format!(
-                "La durée doit être entre 1 et {MAX_MINUTES} minutes"
+                "La durée doit être entre 0 et {MAX_MINUTES} minutes"
             ));
         }
         if !self.favorites.iter().all(|&m| valid(m)) {
@@ -230,7 +231,11 @@ fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> 
     let phase = countdown.phase(now);
     let (label, detail, tone, actions) = match phase {
         Phase::Idle => {
-            let mut actions = vec![add(1), add(5), start];
+            let mut actions = vec![add(1), add(5)];
+            // Nothing to count down from zero: add minutes first.
+            if !countdown.duration.is_zero() {
+                actions.push(start);
+            }
             if countdown.duration != settings.default_duration() {
                 actions.push(reset);
             }
@@ -253,6 +258,9 @@ fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> 
         tone,
         dot: false,
         actions,
+        // Not started: the compact views show the timer icon.
+        quiet: phase == Phase::Idle,
+        ringing: phase == Phase::Finished,
     }];
     if phase == Phase::Idle && !settings.favorites.is_empty() {
         items.push(Item {
@@ -321,13 +329,19 @@ mod tests {
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].label, "Temps écoulé");
         assert_eq!(items[0].tone, Tone::Attention);
+        assert!(items[0].ringing);
         assert_eq!(ids(&items[0]), ["reset"]);
     }
 
     #[test]
     fn settings_are_checked() {
-        let bad = Settings {
+        let zero = Settings {
             default_minutes: 0,
+            ..Settings::default()
+        };
+        assert!(zero.validate().is_ok());
+        let bad = Settings {
+            default_minutes: MAX_MINUTES + 1,
             ..Settings::default()
         };
         assert!(bad.validate().is_err());
@@ -336,5 +350,25 @@ mod tests {
             ..Settings::default()
         };
         assert_eq!(duplicates.validate().unwrap().favorites, [5, 10]);
+    }
+
+    #[test]
+    fn a_timer_at_zero_only_offers_to_add_minutes() {
+        let t0 = Instant::now();
+        let settings = Settings {
+            default_minutes: 0,
+            favorites: Vec::new(),
+        };
+        let mut countdown = Countdown::new(settings.default_duration());
+        let at_zero = &items(&countdown, &settings, t0)[0];
+        assert_eq!(at_zero.label, "00:00");
+        assert_eq!(ids(at_zero), ["add:1", "add:5"]);
+        assert!(at_zero.quiet);
+        countdown.add(minutes(1), t0);
+        let one_minute = &items(&countdown, &settings, t0)[0];
+        assert_eq!(ids(one_minute), ["add:1", "add:5", "start", "reset"]);
+        assert!(one_minute.quiet);
+        countdown.start(t0);
+        assert!(!items(&countdown, &settings, t0)[0].quiet);
     }
 }

@@ -1,6 +1,6 @@
 // Notification sounds, synthesized: no third-party audio files (DF-0003).
 
-export type SoundKind = 'attention' | 'done' | 'error'
+export type SoundKind = 'attention' | 'done' | 'error' | 'alarm'
 
 let context: AudioContext | undefined
 
@@ -34,6 +34,9 @@ export function playSound(kind: SoundKind) {
       break
     case 'error':
       note(ctx, 196, t, 0.45)
+      break
+    case 'alarm': // four quick beeps, like a kitchen timer; repeated while it rings
+      for (let i = 0; i < 4; i++) note(ctx, 880, t + i * 0.16, 0.1)
       break
   }
 }

@@ -88,18 +88,19 @@ fn item_action(state: tauri::State<AppState>, item: String, action: String) {
     }
 }
 
-/// The front decides the visible cards: the notch, compact or expanded
-/// (DF-0003), then the other modules' cards in the separate layout (DF-0011).
+/// The front decides the visible shapes: the notch first, compact or
+/// expanded (DF-0003), then the other cards (DF-0011) and pins (DF-0012).
 #[tauri::command]
-fn set_hit_area(window: tauri::WebviewWindow, cards: Vec<notch::Card>) -> Result<(), String> {
-    notch::set_hit_area(&window, cards).map_err(|e| e.to_string())
+fn set_hit_area(window: tauri::WebviewWindow, shapes: Vec<notch::Shape>) -> Result<(), String> {
+    notch::set_hit_area(&window, shapes).map_err(|e| e.to_string())
 }
 
-/// The cursor left the open notch: it closes once the cursor is also past
-/// the safety margin around it, or not if the cursor comes back first.
+/// The cursor left an open shape (`area`, logical pixels in the window): it
+/// closes once the cursor is also past the safety margin around it, or not
+/// if the cursor comes back first.
 #[tauri::command]
-fn watch_leave(app: AppHandle) {
-    notch::watch_leave(app);
+fn watch_leave(window: tauri::WebviewWindow, area: notch::Bounds) -> Result<(), String> {
+    notch::watch_leave(&window, area).map_err(|e| e.to_string())
 }
 
 /// The cursor is back on the notch: stops `watch_leave`.
@@ -193,6 +194,7 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_module_order,
             settings::set_module_layout,
             settings::set_notch_speed,
+            settings::set_module_pin,
             settings::module_call
         ])
         .setup(move |app| {

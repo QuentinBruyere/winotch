@@ -107,6 +107,9 @@ fn item(watch: &Watch, now: Instant) -> Item {
         },
         dot: false,
         actions,
+        // Never started: the compact views show the stopwatch icon.
+        quiet: watch.idle(),
+        ..Item::default()
     }
 }
 

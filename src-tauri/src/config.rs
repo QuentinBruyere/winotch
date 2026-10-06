@@ -37,6 +37,19 @@ pub struct Config {
     pub module_layout: ModuleLayout,
     /// How fast the notch opens and closes.
     pub notch_speed: NotchSpeed,
+    /// Pinned modules and their side, by module id (DF-0012).
+    pub pins: BTreeMap<String, PinSide>,
+}
+
+/// Side of a pinned module's mini-notch, next to the notch (DF-0012).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PinSide {
+    /// The side with fewer pins.
+    #[default]
+    Auto,
+    Left,
+    Right,
 }
 
 /// Speed of the notch's opening and closing animation.
@@ -94,6 +107,7 @@ impl Default for Config {
             module_order: Vec::new(),
             module_layout: ModuleLayout::default(),
             notch_speed: NotchSpeed::default(),
+            pins: BTreeMap::new(),
         }
     }
 }

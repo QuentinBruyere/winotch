@@ -35,3 +35,71 @@ html[data-window="settings"] body {
 #app {
   height: 100%;
 }
+
+/* Shared by the notch, its cards and pins (Notch.svelte, Sections.svelte,
+   Pin.svelte). Scoped to the notch window: the settings use other styles. */
+html[data-window='notch'] {
+  & .dot {
+    width: 8px;
+    height: 8px;
+    flex-shrink: 0;
+    border-radius: 50%;
+    transition: background-color 250ms ease;
+  }
+
+  & .dot.blank {
+    background: transparent;
+  }
+
+  & .dots {
+    display: flex;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
+  & .dots.column {
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  & .pulse {
+    animation: pulse 1.2s ease-in-out infinite;
+  }
+
+  & .module-icon {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    height: 24px;
+    opacity: 0.55;
+  }
+
+  & .label,
+  & .title,
+  & .muted {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  & .muted {
+    opacity: 0.55;
+  }
+
+  /* A ringing module (a timer whose time is up) pulses its shape's border. */
+  & .ringing {
+    animation: ringing 1s ease-in-out infinite;
+  }
+}
+
+@keyframes ringing {
+  50% {
+    box-shadow: inset 0 0 0 2px var(--tone-attention);
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.3;
+  }
+}

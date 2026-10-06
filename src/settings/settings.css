@@ -170,6 +170,13 @@ html[data-window='settings'] {
     padding: 5px;
   }
 
+  /* A pinned module's pin button (DF-0012). */
+  & button.pin.pinned {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
+  }
+
   /* A module's settings start a new card: no separator above their first row. */
   & section > .separated:first-child {
     margin-top: 0;

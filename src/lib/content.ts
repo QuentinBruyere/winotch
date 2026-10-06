@@ -25,6 +25,10 @@ export interface Item {
   // Shows a dot in the tone's colour; text-only items (the time) have none.
   dot: boolean
   actions: Action[]
+  // Nothing worth showing yet: compact views show the module's icon instead.
+  quiet: boolean
+  // Rings (a timer whose time is up): an alarm repeats and its shape pulses.
+  ringing: boolean
 }
 
 // Mirrors `Section` in src-tauri/src/module.rs: one module's part of the notch.
@@ -34,6 +38,27 @@ export interface Section {
   items: Item[]
   // The module's placeholder when it has no item, shown in the open notch.
   note: string | null
+  // Pinned: shown in its own mini-notch on this side of the notch (DF-0012).
+  pin: Side | null
+}
+
+// Side of a pin, mirrors `Side` in src-tauri/src/module.rs. On the left and
+// right edges of the screen: above and below the notch.
+export type Side = 'left' | 'right'
+
+// A rectangle in logical pixels, relative to the window.
+export interface Rect {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
+// A visible shape for the window region, mirrors `notch::Shape` in Rust.
+export interface Shape extends Rect {
+  radius: number
+  // Glued to the screen edge: square corners on that side.
+  attached: boolean
 }
 
 // Mirrors `Content` in src-tauri/src/module.rs: sections in the user's order.
@@ -45,6 +70,11 @@ export interface Content {
 
 export function allItems(content: Content): Item[] {
   return content.sections.flatMap((s) => s.items)
+}
+
+// Whether one of these modules rings: the shape showing them pulses.
+export function ringing(sections: Section[]): boolean {
+  return sections.some((s) => s.items.some((i) => i.ringing))
 }
 
 // Screen edge the notch is attached to, mirrors `Edge` in src-tauri/src/placement.rs
@@ -86,6 +116,19 @@ export interface Status {
   // Center of the compact notch along the edge, from the start of the window,
   // in logical pixels; null = the middle of the window (DF-0006)
   anchor: number | null
+}
+
+// CSS corners of a shape: glued to the edge, a notch rounds its inner
+// corners only (DF-0006); a pill or a detached card rounds all four.
+export function corners(edge: Edge, radius: number, attached: boolean): string {
+  const r = radius
+  if (!attached) return `${r}px`
+  return {
+    top: `0 0 ${r}px ${r}px`,
+    bottom: `${r}px ${r}px 0 0`,
+    left: `0 ${r}px ${r}px 0`,
+    right: `${r}px 0 0 ${r}px`,
+  }[edge]
 }
 
 // Most urgent first: decides what the compact notch shows.

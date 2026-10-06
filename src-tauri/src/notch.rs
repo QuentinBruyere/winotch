@@ -3,39 +3,48 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::Deserialize;
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewWindow};
 
 use crate::placement::{self, Area, Edge, Placement, Screen, Style};
 use crate::resistance::Rect;
 use crate::{AppState, NOTCH_LABEL, platform};
 
-/// One visible card of the notch in logical pixels, chosen by the front.
+/// A rectangle in logical pixels, relative to the window.
 #[derive(Debug, Clone, Copy, Deserialize)]
-pub struct Card {
+pub struct Bounds {
+    pub x: f64,
+    pub y: f64,
     pub width: f64,
     pub height: f64,
-    pub radius: f64,
 }
 
-/// Visible cards (DF-0003, DF-0011): the notch, then the other modules'
-/// cards in the separate layout. `None` until the front reports them: the
-/// compact shape of the current edge is used meanwhile.
-static HIT_AREA: Mutex<Option<Vec<Card>>> = Mutex::new(None);
+/// One visible shape, placed by the front (it draws them): the notch, the
+/// other cards and the gaps between them (DF-0011), the pins (DF-0012).
+#[derive(Debug, Clone, Copy, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Shape {
+    #[serde(flatten)]
+    pub bounds: Bounds,
+    pub radius: f64,
+    /// Glued to the screen edge: square corners on that side.
+    pub attached: bool,
+}
 
-/// Space between two cards of the separate layout, in logical pixels; must
-/// match `CARD_GAP` in src/App.svelte.
-const CARD_GAP: f64 = 8.0;
+/// Visible shapes, the notch first. `None` until the front reports them:
+/// the compact notch of the current edge is used meanwhile.
+static HIT_AREA: Mutex<Option<Vec<Shape>>> = Mutex::new(None);
 
-/// Around the open notch, in logical pixels: the cursor may stray this far
+/// Depth of the notch window towards the inside of the screen, in logical
+/// pixels: the tallest open notch on the top / bottom edges (`MAX_HEIGHT` in
+/// src/App.svelte), the widest open shape on the left / right ones. Along the
+/// edge the window spans it all (`placement::window_size`).
+const WINDOW_DEPTH: f64 = 300.0;
+const WINDOW_DEPTH_SIDE: f64 = 400.0;
+
+/// Around an open shape, in logical pixels: the cursor may stray this far
 /// out without closing it, e.g. aiming at a button near its edge. Not a part
 /// of the window (clicks there reach the app below): only the closing waits.
 const SAFETY_MARGIN: f64 = 16.0;
-
-/// Left, top, right, bottom, in physical screen pixels.
-type Bounds = (i32, i32, i32, i32);
-
-/// Bounding box of the visible cards and the scale factor, for `watch_leave`.
-static OPEN_AREA: Mutex<Option<(Bounds, f64)>> = Mutex::new(None);
 
 /// Bumped to stop the running `watch_leave`, if any.
 static LEAVE_WATCH: AtomicU64 = AtomicU64::new(0);
@@ -94,93 +103,65 @@ fn current_placement(window: &WebviewWindow) -> Placement {
         .clone()
 }
 
-/// Records the visible cards and restricts the window to them.
-pub fn set_hit_area(window: &WebviewWindow, cards: Vec<Card>) -> tauri::Result<()> {
-    if cards.is_empty() {
+/// Records the visible shapes and restricts the window to them.
+pub fn set_hit_area(window: &WebviewWindow, shapes: Vec<Shape>) -> tauri::Result<()> {
+    if shapes.is_empty() {
         return Ok(());
     }
-    *HIT_AREA.lock().unwrap() = Some(cards);
+    *HIT_AREA.lock().unwrap() = Some(shapes);
     apply_hit_area(window)
 }
 
-/// Restricts the window to the visible cards, the notch glued to the
-/// attached edge, and gives the notch in screen coordinates to the cursor
-/// resistance (DF-0004). Re-applied after moves, DPI or placement changes.
+/// Restricts the window to the visible shapes and gives the notch (the first
+/// one) in screen coordinates to the cursor resistance (DF-0004). Re-applied
+/// after moves, DPI or placement changes.
 pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
     let placement = current_placement(window);
-    let (edge, pill) = (placement.edge, placement.style == Style::Pill);
-    let cards = HIT_AREA.lock().unwrap().clone().unwrap_or_else(|| {
-        let (width, height, radius) = compact_shape(edge, placement.style);
-        vec![Card {
-            width,
-            height,
-            radius,
-        }]
-    });
+    let edge = placement.edge;
     let scale = window.scale_factor()?;
     let px = |v: f64| (v * scale).round() as i32;
-    // Window regions are relative to the outer window rectangle. The inner
-    // size is also wrong before the first show (Windows still counts a frame).
-    let size = window.outer_size()?;
-    let size = (size.width as i32, size.height as i32);
-    let anchor = match anchor() {
-        Some(anchor) => px(anchor),
-        None if edge.is_vertical() => size.1 / 2,
-        None => size.0 / 2,
-    };
-    let sizes: Vec<_> = cards.iter().map(|c| (px(c.width), px(c.height))).collect();
-    let corners = placement::stack_in_window(edge, size, &sizes, px(CARD_GAP), anchor);
-    let shapes: Vec<_> = cards
-        .iter()
-        .zip(sizes)
-        .zip(corners)
-        .enumerate()
-        .map(|(i, ((card, (width, height)), (x, y)))| platform::Shape {
-            x,
-            y,
-            width,
-            height,
-            radius: px(card.radius),
-            // Only the notch itself can be glued to the edge.
-            detached: pill || i > 0,
-        })
-        .collect();
-    // The gaps between cards belong to the notch too: the cursor and clicks
-    // do not go through to the app below, and hovering them keeps it open.
-    let gaps = shapes.windows(2).map(|pair| {
-        let (upper, lower) = if pair[0].y < pair[1].y {
-            (pair[0], pair[1])
-        } else {
-            (pair[1], pair[0])
-        };
-        let left = upper.x.min(lower.x);
-        platform::Shape {
-            x: left,
-            y: upper.y + upper.height,
-            width: (upper.x + upper.width).max(lower.x + lower.width) - left,
-            height: lower.y - (upper.y + upper.height),
-            radius: 0,
-            detached: true,
+    let shapes: Vec<platform::Shape> = match HIT_AREA.lock().unwrap().clone() {
+        Some(shapes) => shapes
+            .iter()
+            .map(|s| platform::Shape {
+                x: px(s.bounds.x),
+                y: px(s.bounds.y),
+                width: px(s.bounds.width),
+                height: px(s.bounds.height),
+                radius: px(s.radius),
+                detached: !s.attached,
+            })
+            .collect(),
+        // Before the front reports: the compact notch, centered on the anchor.
+        None => {
+            let (width, height, radius) = compact_shape(edge, placement.style);
+            // Window regions are relative to the outer window rectangle. The
+            // inner size is also wrong before the first show.
+            let size = window.outer_size()?;
+            let size = (size.width as i32, size.height as i32);
+            let anchor = match anchor() {
+                Some(anchor) => px(anchor),
+                None if edge.is_vertical() => size.1 / 2,
+                None => size.0 / 2,
+            };
+            let shape = (px(width), px(height));
+            let (x, y) = placement::shape_in_window(edge, size, shape, anchor);
+            vec![platform::Shape {
+                x,
+                y,
+                width: shape.0,
+                height: shape.1,
+                radius: px(radius),
+                detached: placement.style == Style::Pill,
+            }]
         }
-    });
-    let area: Vec<_> = shapes.iter().copied().chain(gaps).collect();
-    platform::restrict_to_shapes(window, edge, &area)?;
+    };
+    platform::restrict_to_shapes(window, edge, &shapes)?;
 
-    let position = window.outer_position()?;
-    let (left, top) = (position.x, position.y);
-    *OPEN_AREA.lock().unwrap() = Some((
-        (
-            left + area.iter().map(|s| s.x).min().unwrap_or(0),
-            top + area.iter().map(|s| s.y).min().unwrap_or(0),
-            left + area.iter().map(|s| s.x + s.width).max().unwrap_or(0),
-            top + area.iter().map(|s| s.y + s.height).max().unwrap_or(0),
-        ),
-        scale,
-    ));
-
-    // The resistance guards the notch, the way in; the other cards only show
+    // The resistance guards the notch, the way in; the other shapes only open
     // while the cursor is already there.
     let notch = shapes[0];
+    let position = window.outer_position()?;
     platform::set_resistance_rect(Rect {
         left: position.x + notch.x,
         top: position.y + notch.y,
@@ -188,14 +169,23 @@ pub fn apply_hit_area(window: &WebviewWindow) -> tauri::Result<()> {
         bottom: position.y + notch.y + notch.height,
         radius: notch.radius,
         attached: edge,
-        detached: pill,
+        detached: notch.detached,
     });
     Ok(())
 }
 
-/// The cursor left the open notch (DF-0011): tells the front once it is
-/// past the safety margin too. Stopped by `cancel_leave` or the next call.
-pub fn watch_leave(app: AppHandle) {
+/// The cursor left an open shape (DF-0011, DF-0012): tells the front once
+/// it is past the safety margin around `area` too. Stopped by `cancel_leave`
+/// or the next call.
+pub fn watch_leave(window: &WebviewWindow, area: Bounds) -> tauri::Result<()> {
+    let scale = window.scale_factor()?;
+    let position = window.outer_position()?;
+    // In physical screen pixels, margin included.
+    let left = f64::from(position.x) + (area.x - SAFETY_MARGIN) * scale;
+    let top = f64::from(position.y) + (area.y - SAFETY_MARGIN) * scale;
+    let right = f64::from(position.x) + (area.x + area.width + SAFETY_MARGIN) * scale;
+    let bottom = f64::from(position.y) + (area.y + area.height + SAFETY_MARGIN) * scale;
+    let app = window.app_handle().clone();
     let watch = LEAVE_WATCH.fetch_add(1, Ordering::Relaxed) + 1;
     std::thread::spawn(move || {
         loop {
@@ -203,23 +193,17 @@ pub fn watch_leave(app: AppHandle) {
             if LEAVE_WATCH.load(Ordering::Relaxed) != watch {
                 return;
             }
-            let area = *OPEN_AREA.lock().unwrap();
-            let (Some(((left, top, right, bottom), scale)), Ok(cursor)) =
-                (area, app.cursor_position())
-            else {
+            let Ok(cursor) = app.cursor_position() else {
                 return;
             };
-            let margin = SAFETY_MARGIN * scale;
-            let near = cursor.x >= f64::from(left) - margin
-                && cursor.x < f64::from(right) + margin
-                && cursor.y >= f64::from(top) - margin
-                && cursor.y < f64::from(bottom) + margin;
+            let near = cursor.x >= left && cursor.x < right && cursor.y >= top && cursor.y < bottom;
             if !near {
                 let _ = app.emit_to(NOTCH_LABEL, "pointer-left", ());
                 return;
             }
         }
     });
+    Ok(())
 }
 
 pub fn cancel_leave() {
@@ -370,11 +354,23 @@ pub fn place(window: &WebviewWindow) -> tauri::Result<()> {
         return Ok(());
     };
     let placement = current_placement(window);
-    let size = window.outer_size()?;
+    // Resized only with the edge, the screen or the scale, never to animate:
+    // resizing a WebView2 flashes.
+    let depth = if placement.edge.is_vertical() {
+        WINDOW_DEPTH_SIDE
+    } else {
+        WINDOW_DEPTH
+    };
+    let depth = (depth * window.scale_factor()?).round() as i32;
+    let size = placement::window_size(placement.edge, area, depth);
+    let current = window.outer_size()?;
+    if (current.width as i32, current.height as i32) != size {
+        window.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32))?;
+    }
     let layout = placement::layout(
         &placement,
         area,
-        (size.width as i32, size.height as i32),
+        size,
         compact_length(window, placement.edge)?,
         placement.gap_px(window.scale_factor()?),
     );

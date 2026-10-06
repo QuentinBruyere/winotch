@@ -33,6 +33,10 @@ pub struct ModuleInfo {
     name: String,
     description: String,
     enabled: bool,
+    /// Pinned next to the notch, and on which side (DF-0012).
+    pin: Option<crate::config::PinSide>,
+    /// Can be pinned: enabled and not the first module (the notch itself).
+    pinnable: bool,
     /// The module's own data, read by its settings component.
     settings: Value,
 }
@@ -68,6 +72,11 @@ pub struct Settings {
 pub fn current(app: &AppHandle) -> Settings {
     let state = app.state::<AppState>();
     let config = state.config.lock().unwrap().clone();
+    // The first enabled module is the notch itself: it cannot be pinned.
+    let first_enabled = crate::module::ordered(&state.modules, &config.module_order)
+        .into_iter()
+        .find(|m| crate::module::is_enabled(*m, &config))
+        .map(|m| m.id().to_string());
     Settings {
         sound_enabled: config.sound_enabled,
         hide_in_fullscreen: config.hide_in_fullscreen,
@@ -91,6 +100,8 @@ pub fn current(app: &AppHandle) -> Settings {
                     name: m.name().into(),
                     description: m.description().into(),
                     enabled,
+                    pin: config.pins.get(m.id()).copied(),
+                    pinnable: enabled && first_enabled.as_deref() != Some(m.id()),
                     settings: if enabled { m.settings() } else { Value::Null },
                 }
             })
@@ -341,6 +352,22 @@ pub fn set_module_layout(app: AppHandle, layout: crate::config::ModuleLayout) {
     update_config(&app, |c| c.module_layout = layout);
     changed(&app);
     crate::emit_status(&app);
+}
+
+/// Pins a module next to the notch on a side, or unpins it with `None`
+/// (DF-0012).
+#[tauri::command]
+pub fn set_module_pin(app: AppHandle, id: String, pin: Option<crate::config::PinSide>) {
+    update_config(&app, |c| match pin {
+        Some(side) => {
+            c.pins.insert(id, side);
+        }
+        None => {
+            c.pins.remove(&id);
+        }
+    });
+    changed(&app);
+    crate::emit_content(&app);
 }
 
 /// How fast the notch opens and closes.

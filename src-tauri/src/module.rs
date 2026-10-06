@@ -1,6 +1,7 @@
 //! Module contract, see docs/adr/0009-systeme-de-modules.md. The core only
 //! draws the notch: everything it shows comes from modules, as generic items.
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 
 use serde::de::DeserializeOwned;
@@ -8,6 +9,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use tauri::{AppHandle, Emitter, Manager};
 
+use crate::config::PinSide;
 use crate::{AppState, config};
 
 /// How an item looks and how urgent it is: decides its colour, which item
@@ -84,6 +86,12 @@ pub struct Item {
     pub dot: bool,
     /// Buttons shown in the open notch, in order.
     pub actions: Vec<Action>,
+    /// Nothing worth showing yet (e.g. a stopwatch at zero): the compact
+    /// views (closed notch, pin) show the module's icon instead of the label.
+    pub quiet: bool,
+    /// Rings (e.g. a timer whose time is up): an alarm repeats and the shape
+    /// showing it pulses until the user acknowledges it.
+    pub ringing: bool,
 }
 
 /// A feature shown in the notch. Modules are compiled in and handed to
@@ -194,6 +202,17 @@ pub struct Section {
     pub items: Vec<Item>,
     /// The module's placeholder, when it has no item.
     pub note: Option<String>,
+    /// Pinned: shown in its own mini-notch on this side (DF-0012).
+    pub pin: Option<Side>,
+}
+
+/// Where a pinned module's mini-notch is, next to the notch. On the left and
+/// right edges of the screen: above and below.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Side {
+    Left,
+    Right,
 }
 
 /// Everything the notch draws: one section per enabled module with
@@ -234,14 +253,45 @@ pub(crate) fn ordered<'a>(modules: &'a [Box<dyn Module>], order: &[String]) -> V
     sorted
 }
 
+/// Side of each module, `ids` being the enabled modules in display order
+/// (DF-0012). The first one is the notch itself: never pinned. A forced side
+/// is kept; each `Auto` pin goes, in order, to the side with fewer pins (the
+/// right one when even).
+pub(crate) fn pin_sides(ids: &[&str], pins: &BTreeMap<String, PinSide>) -> Vec<Option<Side>> {
+    let wanted: Vec<Option<PinSide>> = ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| if i == 0 { None } else { pins.get(*id).copied() })
+        .collect();
+    let forced = |side| wanted.iter().filter(|w| **w == Some(side)).count();
+    let (mut left, mut right) = (forced(PinSide::Left), forced(PinSide::Right));
+    wanted
+        .into_iter()
+        .map(|w| match w? {
+            PinSide::Left => Some(Side::Left),
+            PinSide::Right => Some(Side::Right),
+            PinSide::Auto if left < right => {
+                left += 1;
+                Some(Side::Left)
+            }
+            PinSide::Auto => {
+                right += 1;
+                Some(Side::Right)
+            }
+        })
+        .collect()
+}
+
 pub(crate) fn content(modules: &[Box<dyn Module>], config: &config::Config) -> Content {
     let mut content = Content::default();
-    let mut any_enabled = false;
-    for module in ordered(modules, &config.module_order)
+    let enabled: Vec<&dyn Module> = ordered(modules, &config.module_order)
         .into_iter()
         .filter(|m| is_enabled(*m, config))
-    {
-        any_enabled = true;
+        .collect();
+    let ids: Vec<&str> = enabled.iter().map(|m| m.id()).collect();
+    let sides = pin_sides(&ids, &config.pins);
+    let any_enabled = !enabled.is_empty();
+    for (module, pin) in enabled.into_iter().zip(sides) {
         let items: Vec<Item> = module
             .items()
             .into_iter()
@@ -260,6 +310,7 @@ pub(crate) fn content(modules: &[Box<dyn Module>], config: &config::Config) -> C
                 module: module.id().into(),
                 items,
                 note,
+                pin,
             });
         }
     }
@@ -370,5 +421,39 @@ mod tests {
         let content = super::content(&modules(), &config);
         assert!(content.sections.is_empty());
         assert_eq!(content.note.as_deref(), Some("Aucun module actif"));
+    }
+
+    #[test]
+    fn auto_pins_balance_left_and_right_the_first_module_never_pinned() {
+        let pins: BTreeMap<String, PinSide> = ["a", "b", "c", "d"]
+            .into_iter()
+            .map(|id| (id.to_string(), PinSide::Auto))
+            .collect();
+        assert_eq!(
+            pin_sides(&["a", "b", "c", "d"], &pins),
+            vec![None, Some(Side::Right), Some(Side::Left), Some(Side::Right)]
+        );
+        // Unpinned modules stay in the notch.
+        assert_eq!(
+            pin_sides(&["a", "x", "b"], &pins),
+            vec![None, None, Some(Side::Right)]
+        );
+    }
+
+    #[test]
+    fn forced_sides_are_kept_and_counted_by_auto_pins() {
+        let pins: BTreeMap<String, PinSide> = [
+            ("b", PinSide::Auto),
+            ("c", PinSide::Right),
+            ("d", PinSide::Auto),
+        ]
+        .into_iter()
+        .map(|(id, side)| (id.to_string(), side))
+        .collect();
+        // The forced right pin counts first: both auto pins go left, then right.
+        assert_eq!(
+            pin_sides(&["a", "b", "c", "d"], &pins),
+            vec![None, Some(Side::Left), Some(Side::Right), Some(Side::Right)]
+        );
     }
 }

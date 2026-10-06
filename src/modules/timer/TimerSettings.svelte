@@ -36,10 +36,12 @@
 >
   <div>
     <div class="label">Durée par défaut</div>
-    <div class="hint">En minutes, celle du minuteur à son lancement.</div>
+    <div class="hint">
+      En minutes, celle du minuteur à son lancement. À 0, on ajoute les minutes depuis le notch.
+    </div>
   </div>
   <div class="field">
-    <input type="number" min="1" max="600" bind:value={duration} />
+    <input type="number" min="0" max="600" bind:value={duration} />
     <button disabled={duration === String(data.defaultMinutes)}>Appliquer</button>
   </div>
 </form>

@@ -304,7 +304,7 @@ fn item(session: &Session) -> Item {
         detail: session.tool.clone(),
         tone,
         dot: true,
-        actions: Vec::new(),
+        ..Item::default()
     }
 }
 

@@ -3,6 +3,7 @@
   import { invoke } from '@tauri-apps/api/core'
   import { listen } from '@tauri-apps/api/event'
   import GripVertical from '@lucide/svelte/icons/grip-vertical'
+  import PinIcon from '@lucide/svelte/icons/pin'
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import SettingsIcon from '@lucide/svelte/icons/settings'
   import { flip } from 'svelte/animate'
@@ -17,6 +18,7 @@
   type Style = 'notch' | 'pill'
   type ModuleLayout = 'joined' | 'separate'
   type NotchSpeed = 'slow' | 'normal' | 'fast'
+  type PinSide = 'auto' | 'left' | 'right'
   interface Settings {
     soundEnabled: boolean
     hideInFullscreen: boolean
@@ -43,6 +45,8 @@
     name: string
     description: string
     enabled: boolean
+    pin: PinSide | null
+    pinnable: boolean
     settings: unknown
   }
 
@@ -112,6 +116,18 @@
 
   function setModuleEnabled(module: ModuleInfo, enabled: boolean) {
     void run('set_module_enabled', { id: module.id, enabled })
+  }
+
+  // Pinned next to the notch (DF-0012); on the left / right edges of the
+  // screen, left and right mean above and below.
+  const pinSideChoices: { value: PinSide; label: string }[] = [
+    { value: 'auto', label: 'Auto' },
+    { value: 'left', label: 'Gauche' },
+    { value: 'right', label: 'Droite' },
+  ]
+
+  function setModulePin(module: ModuleInfo, pin: PinSide | null) {
+    void run('set_module_pin', { id: module.id, pin })
   }
 
   // Reordering the modules by dragging their handle (DF-0011). The grabbed
@@ -590,7 +606,8 @@
         <h1>Modules</h1>
         <p class="intro">
           Fais glisser un module par sa poignée pour choisir l'ordre d'affichage dans le notch : le
-          premier est le plus près du bord.
+          premier est le plus près du bord. L'épingle place un module dans son propre petit notch,
+          à côté du principal.
         </p>
         {#each orderedModules as module, index (module.id)}
           {@const ui = moduleUis[module.id]}
@@ -622,6 +639,37 @@
               {#if module.description}<div class="hint">{module.description}</div>{/if}
             </div>
             <div class="actions">
+              {#if module.pin && module.pinnable}
+                <select
+                  aria-label="Côté de l'épingle de {module.name}"
+                  title={settings.edge === 'left' || settings.edge === 'right'
+                    ? 'Gauche : au-dessus du notch, Droite : au-dessous'
+                    : 'Côté du notch où se place l’épingle'}
+                  value={module.pin}
+                  onchange={(e) => setModulePin(module, e.currentTarget.value as PinSide)}
+                >
+                  {#each pinSideChoices as choice (choice.value)}
+                    <option value={choice.value}>{choice.label}</option>
+                  {/each}
+                </select>
+              {/if}
+              <button
+                class="icon pin"
+                class:pinned={!!module.pin && module.pinnable}
+                disabled={!module.pinnable}
+                aria-pressed={!!module.pin && module.pinnable}
+                title={!module.enabled
+                  ? 'Active le module pour l’épingler'
+                  : !module.pinnable
+                    ? 'Le premier module est toujours dans le notch'
+                    : module.pin
+                      ? 'Détacher du notch'
+                      : 'Épingler à côté du notch'}
+                aria-label="Épingler {module.name}"
+                onclick={() => setModulePin(module, module.pin ? null : 'auto')}
+              >
+                <PinIcon size={16} />
+              </button>
               <input
                 type="checkbox"
                 class="switch"
