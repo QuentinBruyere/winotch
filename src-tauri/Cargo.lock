@@ -4794,6 +4794,8 @@ dependencies = [
  "tauri-plugin-log",
  "tauri-plugin-single-instance",
  "tiny_http",
+ "windows",
+ "windows-core",
  "windows-sys 0.61.2",
 ]
 

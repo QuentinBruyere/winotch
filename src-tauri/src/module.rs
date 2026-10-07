@@ -29,13 +29,33 @@ pub enum Tone {
     Error,
 }
 
-/// Icons the open notch knows for action buttons.
+/// Icons the front knows: for action buttons, and for an item in the compact
+/// views (`Item::icon`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub enum ActionIcon {
+pub enum Icon {
     Play,
     Pause,
     Reset,
+    /// A speaker without waves: the sound is low.
+    VolumeLow,
+    /// A speaker with one wave.
+    VolumeMedium,
+    /// A speaker with two waves: the sound is loud.
+    VolumeHigh,
+    /// A crossed-out speaker: no sound.
+    Muted,
+}
+
+/// A slider in an item's row of the open notch (e.g. the volume). Moving it
+/// calls `Module::item_action` with `set:<value>`.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Slider {
+    pub value: f64,
+    pub min: f64,
+    pub max: f64,
+    pub step: f64,
 }
 
 /// A button at the end of an item's row in the open notch (e.g. start a
@@ -47,11 +67,11 @@ pub struct Action {
     pub id: String,
     /// Tooltip of an icon button, text of a button without icon ("+1 min").
     pub label: String,
-    pub icon: Option<ActionIcon>,
+    pub icon: Option<Icon>,
 }
 
 impl Action {
-    pub fn icon(id: &str, icon: ActionIcon, label: &str) -> Self {
+    pub fn icon(id: &str, icon: Icon, label: &str) -> Self {
         Self {
             id: id.into(),
             label: label.into(),
@@ -86,9 +106,14 @@ pub struct Item {
     pub dot: bool,
     /// Buttons shown in the open notch, in order.
     pub actions: Vec<Action>,
+    /// A slider shown in the open notch, between the title and the label.
+    pub slider: Option<Slider>,
     /// Nothing worth showing yet (e.g. a stopwatch at zero): the compact
     /// views (closed notch, pin) show the module's icon instead of the label.
     pub quiet: bool,
+    /// Replaces the module's icon in the compact views (e.g. the volume's
+    /// level).
+    pub icon: Option<Icon>,
     /// Rings (e.g. a timer whose time is up): an alarm repeats and the shape
     /// showing it pulses until the user acknowledges it.
     pub ringing: bool,
@@ -157,6 +182,12 @@ impl Host {
     /// The module's settings data changed: updates the settings window.
     pub fn settings_changed(&self) {
         crate::settings::changed(&self.app);
+    }
+
+    /// Something changed that the user just did elsewhere (e.g. the volume
+    /// keys): the closed notch shows this module briefly (DF-0013).
+    pub fn spotlight(&self) {
+        let _ = self.app.emit("spotlight", self.id);
     }
 
     /// Short message shown in the notch for a few seconds.

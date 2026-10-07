@@ -4,11 +4,13 @@
   import { fade } from 'svelte/transition'
   import type { ModuleUis } from '../modules'
   import Sections from './Sections.svelte'
+  import { icons } from './icons'
   import {
     compactSection,
     corners,
     mostUrgent,
     ringing,
+    sliderPercent,
     toneColor,
     type Card,
     type Edge,
@@ -26,6 +28,7 @@
     note,
     moduleUis,
     notice,
+    spotlight,
     edge,
     style,
     expanded,
@@ -54,6 +57,8 @@
     note: string | null
     moduleUis: ModuleUis
     notice: string | null
+    // A module showing its value for a moment, even when quiet (DF-0013).
+    spotlight: string | null
     edge: Edge
     style: Style
     expanded: boolean
@@ -73,7 +78,11 @@
   const shown = $derived(compactSection(allSections))
   const top = $derived(shown && mostUrgent(shown.items))
   const dotted = $derived(shown?.items.filter((i) => i.dot) ?? [])
-  const ShownIcon = $derived(shown ? iconOf(shown.module) : null)
+  // The item's own icon (the volume's level), else the module's.
+  const ShownIcon = $derived(
+    top?.icon ? icons[top.icon] : shown ? iconOf(shown.module) : null,
+  )
+  const quiet = $derived(!!top?.quiet && shown?.module !== spotlight)
 
   function iconOf(module: string) {
     return moduleUis[module]?.icon ?? Puzzle
@@ -188,9 +197,15 @@
               {/each}
             </span>
           {/if}
-          {#if top.quiet && ShownIcon}
+          {#if quiet && ShownIcon}
             <span class="module-icon"><ShownIcon size={14} strokeWidth={2.25} /></span>
           {:else}
+            {#if top.slider}
+              <!-- A slider's value as a small bar (e.g. the volume). -->
+              <span class="meter">
+                <span style:width="{sliderPercent(top.slider)}%"></span>
+              </span>
+            {/if}
             <span class="label">{top.label}</span>
           {/if}
           {#if top.title}<span class="muted">{top.title}</span>{/if}
@@ -315,5 +330,21 @@
   .compact {
     height: 34px;
     justify-content: center;
+  }
+
+  .meter {
+    flex-shrink: 0;
+    width: 64px;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: rgb(255 255 255 / 0.2);
+  }
+
+  .meter > span {
+    display: block;
+    height: 100%;
+    background: var(--notch-fg);
+    transition: width 150ms ease;
   }
 </style>

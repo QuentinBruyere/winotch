@@ -2,6 +2,7 @@
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import type { ModuleUis } from '../modules'
   import Sections from './Sections.svelte'
+  import { icons } from './icons'
   import { mostUrgent, ringing, toneColor, type Rect, type Section } from './content'
 
   // Space on each side of the closed pin's summary, part of `measured`.
@@ -14,6 +15,7 @@
     rect,
     corners,
     open,
+    spotlit,
     vertical,
     moduleUis,
     measured = $bindable(),
@@ -27,6 +29,8 @@
     rect: Rect
     corners: string
     open: boolean
+    // Just changed (the volume keys): its value for a moment, even when quiet.
+    spotlit: boolean
     // On the left / right edges of the screen: thin, dots or icon only.
     vertical: boolean
     moduleUis: ModuleUis
@@ -41,7 +45,10 @@
 
   const top = $derived(mostUrgent(section.items))
   const dotted = $derived(section.items.filter((i) => i.dot))
-  const Icon = $derived(moduleUis[section.module]?.icon ?? Puzzle)
+  // The item's own icon (the volume's level), else the module's.
+  const Icon = $derived(
+    top?.icon ? icons[top.icon] : (moduleUis[section.module]?.icon ?? Puzzle),
+  )
 
   let summaryWidth = $state(0)
   $effect(() => {
@@ -99,7 +106,7 @@
           {/each}
         </span>
       {/if}
-      {#if top.quiet}
+      {#if top.quiet && !spotlit}
         <span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>
       {:else}
         <span class="label">{top.label}</span>

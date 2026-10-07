@@ -3,6 +3,7 @@ import SquareTerminal from '@lucide/svelte/icons/square-terminal'
 import Clock from '@lucide/svelte/icons/clock'
 import Hourglass from '@lucide/svelte/icons/hourglass'
 import TimerIcon from '@lucide/svelte/icons/timer'
+import Volume2 from '@lucide/svelte/icons/volume-2'
 import type { Component } from 'svelte'
 import ClaudeCodeSettings from './claude-code/ClaudeCodeSettings.svelte'
 import ClockSettings from './clock/ClockSettings.svelte'
@@ -31,4 +32,5 @@ export const coreModuleUis: ModuleUis = {
   clock: { icon: Clock, settings: ClockSettings },
   stopwatch: { icon: TimerIcon },
   timer: { icon: Hourglass, settings: TimerSettings },
+  volume: { icon: Volume2 },
 }

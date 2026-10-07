@@ -58,6 +58,8 @@
   const PIN_OPEN_WIDTH = 280
   const PIN_VERTICAL_LENGTH = 56
   const ALERT_MS = 4000
+  // How long the closed notch shows a module that asked for it (DF-0013).
+  const SPOTLIGHT_MS = 1500
   // A ringing module's alarm (DF-0009): every few seconds, for a minute at
   // most; its shape keeps pulsing until it is acknowledged.
   const ALARM_EVERY_MS = 2000
@@ -80,6 +82,9 @@
   let alertModules = $state<Set<string>>(new Set())
   // The pin under the cursor, and the pins an alert opened (DF-0012).
   let pinHover = $state<string | null>(null)
+  // A module that just changed through the user elsewhere (the volume keys):
+  // the closed notch, or its pin, shows its value for a moment.
+  let spotlight = $state<string | null>(null)
   let pinAlerting = $state(false)
   let pinAlerts = $state<Set<string>>(new Set())
   // Closed width each pin needs, measured by Pin.svelte.
@@ -93,6 +98,11 @@
   const duration = $derived(speedMs[status.speed])
   // Pinned modules live in their own mini-notch, not in the notch (DF-0012).
   const notchSections = $derived(content.sections.filter((s) => !s.pin))
+  // What the closed notch chooses from: the spotlighted module alone.
+  const compactSections = $derived.by(() => {
+    const shown = spotlight && notchSections.find((s) => s.module === spotlight)
+    return shown ? [shown] : notchSections
+  })
   // Opens on hover even without items, to show the modules' notes (ADR-0009).
   // A vertical notch also opens to show notices. In move mode it stays
   // compact, so the shape being dragged does not change under the cursor.
@@ -373,6 +383,7 @@
   }
 
   let alertTimer: ReturnType<typeof setTimeout> | undefined
+  let spotlightTimer: ReturnType<typeof setTimeout> | undefined
   let pinAlertTimer: ReturnType<typeof setTimeout> | undefined
 
   function onContent(next: Content) {
@@ -446,6 +457,11 @@
       listen<Status>('status-changed', (e) => (status = e.payload)),
       // Past the safety margin of an open shape (see `watch`).
       listen('pointer-left', pointerLeft),
+      listen<string>('spotlight', (e) => {
+        spotlight = e.payload
+        clearTimeout(spotlightTimer)
+        spotlightTimer = setTimeout(() => (spotlight = null), SPOTLIGHT_MS)
+      }),
       listen<string>('notice', (e) => {
         notice = e.payload
         clearTimeout(noticeTimer)
@@ -460,6 +476,7 @@
       clearTimeout(noticeTimer)
       clearTimeout(alertTimer)
       clearTimeout(pinAlertTimer)
+      clearTimeout(spotlightTimer)
       clearTimeout(resizeTimer)
       unlisten.forEach((p) => p.then((off) => off()))
     }
@@ -474,10 +491,11 @@
   foldedWidth={compactShape(status.edge, status.style).width}
   {duration}
   gap={CARD_GAP}
-  allSections={notchSections}
+  allSections={compactSections}
   note={content.note}
   {moduleUis}
   {notice}
+  {spotlight}
   edge={status.edge}
   style={status.style}
   {expanded}
@@ -499,6 +517,7 @@
       rect={pin.rect}
       corners={corners(status.edge, pin.radius, attached)}
       open={pin.open}
+      spotlit={spotlight === pin.section.module}
       {vertical}
       {moduleUis}
       bind:measured={pinWidths[pin.section.module]}

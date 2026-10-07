@@ -4,5 +4,6 @@ pub mod claude_code;
 pub mod clock;
 pub mod stopwatch;
 pub mod timer;
+pub mod volume;
 /// Start / pause / reset elapsed time, shared by the stopwatch and the timer.
 mod watch;

@@ -3,15 +3,36 @@ import type { SoundKind } from './sound'
 // Mirrors `Tone` in src-tauri/src/module.rs: colour, urgency and sound of an item.
 export type Tone = 'neutral' | 'active' | 'attention' | 'question' | 'success' | 'error'
 
-// Mirrors `ActionIcon` in src-tauri/src/module.rs
-export type ActionIcon = 'play' | 'pause' | 'reset'
+// Mirrors `Icon` in src-tauri/src/module.rs
+export type Icon =
+  | 'play'
+  | 'pause'
+  | 'reset'
+  | 'volume_low'
+  | 'volume_medium'
+  | 'volume_high'
+  | 'muted'
 
 // Mirrors `Action` in src-tauri/src/module.rs: a button at the end of a row.
 export interface Action {
   id: string
   // Tooltip of an icon button, text of a button without icon ("+1 min").
   label: string
-  icon: ActionIcon | null
+  icon: Icon | null
+}
+
+// Mirrors `Slider` in src-tauri/src/module.rs: moving it sends `set:<value>`.
+export interface Slider {
+  value: number
+  min: number
+  max: number
+  step: number
+}
+
+// Where a slider's value sits, from 0 to 100.
+export function sliderPercent(slider: Slider, value = slider.value): number {
+  const span = slider.max - slider.min
+  return span > 0 ? ((value - slider.min) / span) * 100 : 0
 }
 
 // Mirrors `Item` in src-tauri/src/module.rs: one line of the notch.
@@ -25,8 +46,12 @@ export interface Item {
   // Shows a dot in the tone's colour; text-only items (the time) have none.
   dot: boolean
   actions: Action[]
+  // A slider in the open notch, between the title and the label.
+  slider: Slider | null
   // Nothing worth showing yet: compact views show the module's icon instead.
   quiet: boolean
+  // Replaces the module's icon in the compact views (the volume's level).
+  icon: Icon | null
   // Rings (a timer whose time is up): an alarm repeats and its shape pulses.
   ringing: boolean
 }

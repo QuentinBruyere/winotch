@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::watch::Watch;
-use crate::module::{Action, ActionIcon, Host, Item, Module, Tone, format_duration};
+use crate::module::{Action, Host, Icon, Item, Module, Tone, format_duration};
 
 /// Check interval while stopped: nothing to redraw, just notice a start.
 const IDLE_WAIT: Duration = Duration::from_millis(500);
@@ -87,12 +87,12 @@ impl Module for Stopwatch {
 fn item(watch: &Watch, now: Instant) -> Item {
     let mut actions = Vec::new();
     if watch.running() {
-        actions.push(Action::icon("pause", ActionIcon::Pause, "Pause"));
+        actions.push(Action::icon("pause", Icon::Pause, "Pause"));
     } else {
-        actions.push(Action::icon("start", ActionIcon::Play, "Démarrer"));
+        actions.push(Action::icon("start", Icon::Play, "Démarrer"));
     }
     if !watch.idle() {
-        actions.push(Action::icon("reset", ActionIcon::Reset, "Remettre à zéro"));
+        actions.push(Action::icon("reset", Icon::Reset, "Remettre à zéro"));
     }
     let paused = !watch.running() && !watch.idle();
     Item {

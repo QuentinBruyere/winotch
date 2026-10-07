@@ -1,16 +1,8 @@
 <script lang="ts">
-  import Pause from '@lucide/svelte/icons/pause'
-  import Play from '@lucide/svelte/icons/play'
   import Puzzle from '@lucide/svelte/icons/puzzle'
-  import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
   import type { ModuleUis } from '../modules'
-  import { toneColor, type ActionIcon, type Section } from './content'
-
-  const actionIcons: Record<ActionIcon, typeof Play> = {
-    play: Play,
-    pause: Pause,
-    reset: RotateCcw,
-  }
+  import { sliderPercent, toneColor, type Section } from './content'
+  import { icons } from './icons'
 
   // The modules shown in an open card or pin, one part each, its icon first
   // (DF-0011).
@@ -35,6 +27,10 @@
   function iconOf(module: string) {
     return moduleUis[module]?.icon ?? Puzzle
   }
+
+  // While a slider is held, it shows the cursor's value, not the module's:
+  // the module's own updates would make it jump back under the cursor.
+  let held = $state<Record<string, number>>({})
 </script>
 
 <div
@@ -61,13 +57,36 @@
               <span class="dot blank"></span>
             {/if}
             {#if item.title}<span class="title">{item.title}</span>{/if}
-            <span class="label" class:lead={!item.title}>
+            {#if item.slider}
+              {@const slider = item.slider}
+              {@const value = held[item.id] ?? slider.value}
+              <input
+                type="range"
+                class="slider"
+                aria-label={item.title}
+                min={slider.min}
+                max={slider.max}
+                step={slider.step}
+                {value}
+                style:--fill="{sliderPercent(slider, value)}%"
+                onpointerdown={() => (held[item.id] = slider.value)}
+                oninput={(e) => {
+                  const next = Number(e.currentTarget.value)
+                  held[item.id] = next
+                  onaction(item.id, `set:${next}`)
+                }}
+                onpointerup={() => delete held[item.id]}
+                onpointercancel={() => delete held[item.id]}
+                onclick={(e) => e.stopPropagation()}
+              />
+            {/if}
+            <span class="label" class:lead={!item.title && !item.slider} class:value={!!item.slider}>
               {item.label}{item.detail ? ` · ${item.detail}` : ''}
             </span>
             {#if item.actions.length > 0}
               <span class="actions">
                 {#each item.actions as action (action.id)}
-                  {@const ButtonIcon = action.icon ? actionIcons[action.icon] : null}
+                  {@const ButtonIcon = action.icon ? icons[action.icon] : null}
                   <button
                     class="action"
                     class:text={!ButtonIcon}
@@ -167,6 +186,37 @@
   .note,
   .lead {
     margin-left: 0;
+  }
+
+  /* A slider fills the row; its value keeps a steady width after it. */
+  .slider {
+    flex: 1;
+    min-width: 60px;
+    height: 4px;
+    margin: 0;
+    appearance: none;
+    border-radius: 2px;
+    background: linear-gradient(
+      to right,
+      var(--notch-fg) var(--fill),
+      rgb(255 255 255 / 0.2) var(--fill)
+    );
+    cursor: pointer;
+    outline: none;
+  }
+
+  .slider::-webkit-slider-thumb {
+    appearance: none;
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background: var(--notch-fg);
+  }
+
+  .label.value {
+    margin-left: 0;
+    min-width: 40px;
+    text-align: right;
   }
 
   .actions {

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::module::{Action, ActionIcon, Host, Item, Module, Tone, format_duration};
+use crate::module::{Action, Host, Icon, Item, Module, Tone, format_duration};
 use countdown::{Countdown, Phase};
 
 /// Check interval while stopped: nothing to redraw, just notice a start.
@@ -223,9 +223,9 @@ impl Module for Timer {
 
 fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> {
     let add = |m: u64| Action::text(&format!("add:{m}"), &format!("+{m} min"));
-    let start = Action::icon("start", ActionIcon::Play, "Démarrer");
-    let pause = Action::icon("pause", ActionIcon::Pause, "Pause");
-    let reset = Action::icon("reset", ActionIcon::Reset, "Remettre à zéro");
+    let start = Action::icon("start", Icon::Play, "Démarrer");
+    let pause = Action::icon("pause", Icon::Pause, "Pause");
+    let reset = Action::icon("reset", Icon::Reset, "Remettre à zéro");
     let remaining = format_duration(countdown.remaining_secs(now));
 
     let phase = countdown.phase(now);
@@ -261,6 +261,7 @@ fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> 
         // Not started: the compact views show the timer icon.
         quiet: phase == Phase::Idle,
         ringing: phase == Phase::Finished,
+        ..Item::default()
     }];
     if phase == Phase::Idle && !settings.favorites.is_empty() {
         items.push(Item {
