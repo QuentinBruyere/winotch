@@ -13,6 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::module::{Action, Host, Icon, Item, Module, Tone, format_duration};
+use crate::t;
 use countdown::{Countdown, Phase};
 
 /// Check interval while stopped: nothing to redraw, just notice a start.
@@ -47,14 +48,10 @@ impl Settings {
         let valid = |m: u64| (1..=MAX_MINUTES).contains(&m);
         // A timer may start from zero: its minutes are then added in the notch.
         if self.default_minutes > MAX_MINUTES {
-            return Err(format!(
-                "La durée doit être entre 0 et {MAX_MINUTES} minutes"
-            ));
+            return Err(t!("timer.duration_range", max = MAX_MINUTES));
         }
         if !self.favorites.iter().all(|&m| valid(m)) {
-            return Err(format!(
-                "Les durées favorites doivent être entre 1 et {MAX_MINUTES} minutes"
-            ));
+            return Err(t!("timer.favorites_range", max = MAX_MINUTES));
         }
         let mut seen = Vec::new();
         self.favorites.retain(|m| {
@@ -63,7 +60,7 @@ impl Settings {
             new
         });
         if self.favorites.len() > MAX_FAVORITES {
-            return Err(format!("{MAX_FAVORITES} durées favorites au plus"));
+            return Err(t!("timer.favorites_max", max = MAX_FAVORITES));
         }
         Ok(self)
     }
@@ -118,12 +115,12 @@ impl Module for Timer {
         "timer"
     }
 
-    fn name(&self) -> &'static str {
-        "Minuteur"
+    fn name(&self) -> String {
+        crate::t!("timer.name")
     }
 
-    fn description(&self) -> &'static str {
-        "Un compte à rebours qui sonne à la fin."
+    fn description(&self) -> String {
+        crate::t!("timer.description")
     }
 
     fn enabled_by_default(&self) -> bool {
@@ -204,7 +201,7 @@ impl Module for Timer {
             return Err(format!("unknown action {action}"));
         }
         let settings: Settings =
-            serde_json::from_value(args).map_err(|e| format!("réglages invalides : {e}"))?;
+            serde_json::from_value(args).map_err(|e| crate::t!("settings.invalid", error = e))?;
         let settings = settings.validate()?;
         *self.inner.settings.lock().unwrap() = settings.clone();
         // A timer not started yet takes the new default duration.
@@ -222,10 +219,10 @@ impl Module for Timer {
 }
 
 fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> {
-    let add = |m: u64| Action::text(&format!("add:{m}"), &format!("+{m} min"));
-    let start = Action::icon("start", Icon::Play, "Démarrer");
-    let pause = Action::icon("pause", Icon::Pause, "Pause");
-    let reset = Action::icon("reset", Icon::Reset, "Remettre à zéro");
+    let add = |m: u64| Action::text(&format!("add:{m}"), &t!("timer.add", minutes = m));
+    let start = Action::icon("start", Icon::Play, &t!("action.start"));
+    let pause = Action::icon("pause", Icon::Pause, &t!("action.pause"));
+    let reset = Action::icon("reset", Icon::Reset, &t!("action.reset"));
     let remaining = format_duration(countdown.remaining_secs(now));
 
     let phase = countdown.phase(now);
@@ -244,15 +241,15 @@ fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> 
         Phase::Running => (remaining, None, Tone::Active, vec![add(1), pause, reset]),
         Phase::Paused => (
             remaining,
-            Some("pause".into()),
+            Some(t!("item.paused")),
             Tone::Neutral,
             vec![start, reset],
         ),
-        Phase::Finished => ("Temps écoulé".into(), None, Tone::Attention, vec![reset]),
+        Phase::Finished => (t!("timer.finished"), None, Tone::Attention, vec![reset]),
     };
     let mut items = vec![Item {
         id: "timer".into(),
-        title: "Minuteur".into(),
+        title: t!("timer.name"),
         label,
         detail,
         tone,
@@ -266,11 +263,11 @@ fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> 
     if phase == Phase::Idle && !settings.favorites.is_empty() {
         items.push(Item {
             id: "favorites".into(),
-            title: "Durées".into(),
+            title: t!("timer.favorites"),
             actions: settings
                 .favorites
                 .iter()
-                .map(|m| Action::text(&format!("set:{m}"), &format!("{m} min")))
+                .map(|m| Action::text(&format!("set:{m}"), &t!("timer.minutes", minutes = m)))
                 .collect(),
             ..Item::default()
         });
@@ -328,7 +325,7 @@ mod tests {
         countdown.settle(t0 + minutes(1));
         let items = items(&countdown, &Settings::default(), t0 + minutes(2));
         assert_eq!(items.len(), 1);
-        assert_eq!(items[0].label, "Temps écoulé");
+        assert_eq!(items[0].label, "Time's up");
         assert_eq!(items[0].tone, Tone::Attention);
         assert!(items[0].ringing);
         assert_eq!(ids(&items[0]), ["reset"]);

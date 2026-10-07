@@ -36,12 +36,12 @@ impl Module for Clock {
         "clock"
     }
 
-    fn name(&self) -> &'static str {
-        "Date et heure"
+    fn name(&self) -> String {
+        crate::t!("clock.name")
     }
 
-    fn description(&self) -> &'static str {
-        "L'heure et la date dans le notch."
+    fn description(&self) -> String {
+        crate::t!("clock.description")
     }
 
     fn enabled_by_default(&self) -> bool {
@@ -71,7 +71,11 @@ impl Module for Clock {
             return Vec::new();
         }
         let settings = self.inner.settings.lock().unwrap().clone();
-        let (label, title) = format::format(Local::now().naive_local(), &settings);
+        let (label, title) = format::format(
+            Local::now().naive_local(),
+            &settings,
+            &format::Words::of(crate::i18n::language()),
+        );
         vec![Item {
             id: "now".into(),
             title,
@@ -91,7 +95,7 @@ impl Module for Clock {
             return Err(format!("unknown action {action}"));
         }
         let settings: Settings =
-            serde_json::from_value(args).map_err(|e| format!("réglages invalides : {e}"))?;
+            serde_json::from_value(args).map_err(|e| crate::t!("settings.invalid", error = e))?;
         *self.inner.settings.lock().unwrap() = settings.clone();
         if let Some(host) = self.inner.host.get() {
             host.save_settings(&settings);

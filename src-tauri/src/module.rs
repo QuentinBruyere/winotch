@@ -125,10 +125,16 @@ pub trait Module: Send + Sync + 'static {
     /// Stable identifier, also the key of the module's settings in config.json.
     fn id(&self) -> &'static str;
     /// Name shown to the user.
-    fn name(&self) -> &'static str;
+    /// In the current language (`t!`), like every text a module shows.
+    fn name(&self) -> String;
     /// One sentence shown under the name in the settings' module list.
-    fn description(&self) -> &'static str {
-        ""
+    fn description(&self) -> String {
+        String::new()
+    }
+    /// The module's own translations (ADR-0012): (language, flat JSON) pairs,
+    /// keys prefixed with the module id. Added to winotch's at launch.
+    fn locales(&self) -> &'static [(&'static str, &'static str)] {
+        &[]
     }
     /// Whether the module runs until the user turns it off or on.
     fn enabled_by_default(&self) -> bool {
@@ -346,7 +352,7 @@ pub(crate) fn content(modules: &[Box<dyn Module>], config: &config::Config) -> C
         }
     }
     if !any_enabled {
-        content.note = Some("Aucun module actif".into());
+        content.note = Some(crate::t!("notch.no_module"));
     }
     content
 }
@@ -364,8 +370,8 @@ mod tests {
         fn id(&self) -> &'static str {
             self.id
         }
-        fn name(&self) -> &'static str {
-            "Fake"
+        fn name(&self) -> String {
+            "Fake".into()
         }
         fn start(&self, _: &Host) {}
         fn stop(&self) {}
@@ -451,7 +457,7 @@ mod tests {
         config.modules.entry("b".into()).or_default().enabled = Some(false);
         let content = super::content(&modules(), &config);
         assert!(content.sections.is_empty());
-        assert_eq!(content.note.as_deref(), Some("Aucun module actif"));
+        assert_eq!(content.note.as_deref(), Some("No module enabled"));
     }
 
     #[test]

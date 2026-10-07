@@ -7,6 +7,7 @@
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import SettingsIcon from '@lucide/svelte/icons/settings'
   import { flip } from 'svelte/animate'
+  import { setLanguage, t, type Key } from '../lib/i18n.svelte'
   import { applyAppearance, type Appearance } from '../lib/theme'
   import type { ModuleUis } from '../modules'
   import './settings.css'
@@ -38,6 +39,10 @@
     moduleLayout: ModuleLayout
     notchSpeed: NotchSpeed
     appearance: Appearance
+    language: string | null
+    languages: [string, string][]
+    // The language shown, the system's resolved (ADR-0012).
+    shownLanguage: string
     configDir: string
   }
 
@@ -54,33 +59,33 @@
 
   // Categories of the left menu (DF-0007).
   type Page = 'general' | 'display' | 'modules' | 'about'
-  const pages: { id: Page; label: string }[] = [
-    { id: 'general', label: 'Général' },
-    { id: 'display', label: 'Affichage' },
-    { id: 'modules', label: 'Modules' },
-    { id: 'about', label: 'À propos' },
+  const pages: { id: Page; key: Key }[] = [
+    { id: 'general', key: 'settings.page.general' },
+    { id: 'display', key: 'settings.page.display' },
+    { id: 'modules', key: 'settings.page.modules' },
+    { id: 'about', key: 'settings.page.about' },
   ]
 
-  const appearanceChoices: { value: Appearance; label: string }[] = [
-    { value: 'system', label: 'Système' },
-    { value: 'light', label: 'Clair' },
-    { value: 'dark', label: 'Sombre' },
+  const appearanceChoices: { value: Appearance; key: Key }[] = [
+    { value: 'system', key: 'settings.appearance.system' },
+    { value: 'light', key: 'settings.appearance.light' },
+    { value: 'dark', key: 'settings.appearance.dark' },
   ]
 
-  const speedChoices: { value: NotchSpeed; label: string }[] = [
-    { value: 'slow', label: 'Lente' },
-    { value: 'normal', label: 'Normale' },
-    { value: 'fast', label: 'Rapide' },
+  const speedChoices: { value: NotchSpeed; key: Key }[] = [
+    { value: 'slow', key: 'settings.speed.slow' },
+    { value: 'normal', key: 'settings.speed.normal' },
+    { value: 'fast', key: 'settings.speed.fast' },
   ]
 
-  const layoutChoices: { value: ModuleLayout; label: string }[] = [
-    { value: 'joined', label: 'Collés' },
-    { value: 'separate', label: 'Décollés' },
+  const layoutChoices: { value: ModuleLayout; key: Key }[] = [
+    { value: 'joined', key: 'settings.layout.joined' },
+    { value: 'separate', key: 'settings.layout.separate' },
   ]
 
-  const styleChoices: { value: Style; label: string }[] = [
-    { value: 'notch', label: 'Notch' },
-    { value: 'pill', label: 'Pilule' },
+  const styleChoices: { value: Style; key: Key }[] = [
+    { value: 'notch', key: 'settings.style.notch' },
+    { value: 'pill', key: 'settings.style.pill' },
   ]
 
   // Shown while the slider moves, saved when it is released.
@@ -89,26 +94,29 @@
     if (settings) gap = settings.gap
   })
 
-  const edgeChoices: { value: Edge; label: string }[] = [
-    { value: 'top', label: 'Haut' },
-    { value: 'bottom', label: 'Bas' },
-    { value: 'left', label: 'Gauche' },
-    { value: 'right', label: 'Droite' },
+  const edgeChoices: { value: Edge; key: Key }[] = [
+    { value: 'top', key: 'settings.edge.top' },
+    { value: 'bottom', key: 'settings.edge.bottom' },
+    { value: 'left', key: 'settings.edge.left' },
+    { value: 'right', key: 'settings.edge.right' },
   ]
 
   type ResistanceChoice = 'off' | Strength
-  const resistanceChoices: { value: ResistanceChoice; label: string }[] = [
-    { value: 'off', label: 'Désactivée' },
-    { value: 'soft', label: 'Douce' },
-    { value: 'medium', label: 'Moyenne' },
-    { value: 'strong', label: 'Forte' },
-    { value: 'veryStrong', label: 'Très forte' },
-    { value: 'impassable', label: 'Infranchissable' },
+  const resistanceChoices: { value: ResistanceChoice; key: Key }[] = [
+    { value: 'off', key: 'settings.resistance.off' },
+    { value: 'soft', key: 'settings.resistance.soft' },
+    { value: 'medium', key: 'settings.resistance.medium' },
+    { value: 'strong', key: 'settings.resistance.strong' },
+    { value: 'veryStrong', key: 'settings.resistance.very_strong' },
+    { value: 'impassable', key: 'settings.resistance.impassable' },
   ]
 
   let settings = $state<Settings | null>(null)
   $effect(() => {
     if (settings) applyAppearance(settings.appearance)
+  })
+  $effect(() => {
+    if (settings) setLanguage(settings.shownLanguage)
   })
   let version = $state('')
   let error = $state<string | null>(null)
@@ -131,10 +139,10 @@
 
   // Pinned next to the notch (DF-0012); on the left / right edges of the
   // screen, left and right mean above and below.
-  const pinSideChoices: { value: PinSide; label: string }[] = [
-    { value: 'auto', label: 'Auto' },
-    { value: 'left', label: 'Gauche' },
-    { value: 'right', label: 'Droite' },
+  const pinSideChoices: { value: PinSide; key: Key }[] = [
+    { value: 'auto', key: 'settings.pin_side.auto' },
+    { value: 'left', key: 'settings.pin_side.left' },
+    { value: 'right', key: 'settings.pin_side.right' },
   ]
 
   function setModulePin(module: ModuleInfo, pin: PinSide | null) {
@@ -305,7 +313,7 @@
 </script>
 
 <div class="layout">
-  <nav aria-label="Catégories">
+  <nav aria-label={t('settings.categories')}>
     <div class="brand">
       winotch
       {#if version}<span class="version">v{version}</span>{/if}
@@ -318,7 +326,7 @@
         aria-current={page === item.id ? 'page' : undefined}
         onclick={() => show(item.id)}
       >
-        {item.label}
+        {t(item.key)}
       </button>
     {/each}
   </nav>
@@ -330,10 +338,26 @@
 
     {#if settings}
       {#if page === 'general'}
-        <h1>Général</h1>
+        <h1>{t('settings.page.general')}</h1>
         <section>
           <label class="row">
-            <div class="label">Lancer winotch au démarrage de l'ordinateur</div>
+            <div>
+              <div class="label">{t('settings.language')}</div>
+              <div class="hint">{t('settings.language.hint')}</div>
+            </div>
+            <!-- Each language under its own name, readable whatever is shown. -->
+            <select
+              value={settings.language ?? ''}
+              onchange={(e) => run('set_language', { language: e.currentTarget.value || null })}
+            >
+              <option value="">{t('settings.appearance.system')}</option>
+              {#each settings.languages as [code, name] (code)}
+                <option value={code} lang={code}>{name}</option>
+              {/each}
+            </select>
+          </label>
+          <label class="row separated">
+            <div class="label">{t('settings.autostart')}</div>
             <input
               type="checkbox"
               class="switch"
@@ -343,10 +367,8 @@
           </label>
           <label class="row">
             <div>
-              <div class="label">Son des notifications</div>
-              <div class="hint">
-                Quand un module demande ton attention : permission, question, fin de tâche, erreur
-              </div>
+              <div class="label">{t('settings.sound')}</div>
+              <div class="hint">{t('settings.sound.hint')}</div>
             </div>
             <input
               type="checkbox"
@@ -357,20 +379,18 @@
           </label>
         </section>
       {:else if page === 'display'}
-        <h1>Affichage</h1>
+        <h1>{t('settings.page.display')}</h1>
         <section>
           <div class="stack">
             <div>
-              <div class="label">Apparence</div>
-              <div class="hint">
-                Notch et paramètres clairs ou sombres. Système suit le mode choisi dans Windows.
-              </div>
+              <div class="label">{t('settings.appearance')}</div>
+              <div class="hint">{t('settings.appearance.hint')}</div>
             </div>
             <div
               class="segmented"
               style:grid-template-columns="repeat(3, 1fr)"
               role="radiogroup"
-              aria-label="Apparence"
+              aria-label={t('settings.appearance')}
             >
               {#each appearanceChoices as choice (choice.value)}
                 <button
@@ -379,23 +399,21 @@
                   class:selected={settings.appearance === choice.value}
                   onclick={() => run('set_appearance', { appearance: choice.value })}
                 >
-                  {choice.label}
+                  {t(choice.key)}
                 </button>
               {/each}
             </div>
           </div>
           <div class="stack separated">
             <div>
-              <div class="label">Forme</div>
-              <div class="hint">
-                Notch collé au bord de l'écran, ou pilule détachée du bord, façon Dynamic Island.
-              </div>
+              <div class="label">{t('settings.style')}</div>
+              <div class="hint">{t('settings.style.hint')}</div>
             </div>
             <div
               class="segmented"
               style:grid-template-columns="repeat(2, 1fr)"
               role="radiogroup"
-              aria-label="Forme"
+              aria-label={t('settings.style')}
             >
               {#each styleChoices as choice (choice.value)}
                 <button
@@ -404,7 +422,7 @@
                   class:selected={settings.style === choice.value}
                   onclick={() => run('set_style', { style: choice.value })}
                 >
-                  {choice.label}
+                  {t(choice.key)}
                 </button>
               {/each}
             </div>
@@ -412,8 +430,8 @@
           {#if settings.style === 'pill'}
             <label class="row separated">
               <div>
-                <div class="label">Écart avec le bord</div>
-                <div class="hint">{gap} px</div>
+                <div class="label">{t('settings.gap')}</div>
+                <div class="hint">{t('settings.pixels', { value: gap })}</div>
               </div>
               <input
                 type="range"
@@ -427,8 +445,8 @@
           {/if}
           <div class="stack separated">
             <div>
-              <div class="label">Vitesse d'ouverture</div>
-              <div class="hint">Quand le notch s'ouvre au survol ou lors d'une alerte, et se referme.</div>
+              <div class="label">{t('settings.speed')}</div>
+              <div class="hint">{t('settings.speed.hint')}</div>
             </div>
             <!-- Notched slider, like the cursor resistance one. -->
             <div class="notched">
@@ -437,8 +455,8 @@
                 min="0"
                 max={speedChoices.length - 1}
                 step="1"
-                aria-label="Vitesse d'ouverture"
-                aria-valuetext={speedChoices[speedIndex].label}
+                aria-label={t('settings.speed')}
+                aria-valuetext={t(speedChoices[speedIndex].key)}
                 bind:value={speedIndex}
                 onchange={() => run('set_notch_speed', { speed: speedChoices[speedIndex].value })}
               />
@@ -452,7 +470,7 @@
                       void run('set_notch_speed', { speed: choice.value })
                     }}
                   >
-                    {choice.label}
+                    {t(choice.key)}
                   </button>
                 {/each}
               </div>
@@ -460,17 +478,14 @@
           </div>
           <div class="stack separated">
             <div>
-              <div class="label">Modules</div>
-              <div class="hint">
-                Quand plusieurs modules s'affichent : dans le notch, séparés par un trait, ou
-                chacun dans sa carte, sous le notch.
-              </div>
+              <div class="label">{t('settings.layout')}</div>
+              <div class="hint">{t('settings.layout.hint')}</div>
             </div>
             <div
               class="segmented"
               style:grid-template-columns="repeat(2, 1fr)"
               role="radiogroup"
-              aria-label="Modules"
+              aria-label={t('settings.layout')}
             >
               {#each layoutChoices as choice (choice.value)}
                 <button
@@ -479,20 +494,17 @@
                   class:selected={settings.moduleLayout === choice.value}
                   onclick={() => run('set_module_layout', { layout: choice.value })}
                 >
-                  {choice.label}
+                  {t(choice.key)}
                 </button>
               {/each}
             </div>
           </div>
           <div class="stack separated">
             <div>
-              <div class="label">Position du notch</div>
-              <div class="hint">
-                Changer de bord recentre le notch. À gauche et à droite, le
-                notch est fin et vertical : il s'ouvre au survol.
-              </div>
+              <div class="label">{t('settings.edge')}</div>
+              <div class="hint">{t('settings.edge.hint')}</div>
             </div>
-            <div class="segmented" role="radiogroup" aria-label="Position du notch">
+            <div class="segmented" role="radiogroup" aria-label={t('settings.edge')}>
               {#each edgeChoices as choice (choice.value)}
                 <button
                   role="radio"
@@ -500,18 +512,15 @@
                   class:selected={settings.edge === choice.value}
                   onclick={() => run('set_edge', { edge: choice.value })}
                 >
-                  {choice.label}
+                  {t(choice.key)}
                 </button>
               {/each}
             </div>
           </div>
           <label class="row separated">
             <div>
-              <div class="label">Déplacer le notch</div>
-              <div class="hint">
-                Fais-le glisser le long de son bord ; il s'aimante au centre et aux quarts. Se
-                désactive à la fermeture des paramètres.
-              </div>
+              <div class="label">{t('settings.move')}</div>
+              <div class="hint">{t('settings.move.hint')}</div>
             </div>
             <input
               type="checkbox"
@@ -522,15 +531,15 @@
           </label>
           {#if settings.offCenter}
             <div class="row">
-              <div class="hint">Le notch n'est plus centré sur son bord.</div>
-              <button onclick={() => run('recenter')}>Recentrer</button>
+              <div class="hint">{t('settings.off_center')}</div>
+              <button onclick={() => run('recenter')}>{t('settings.recenter')}</button>
             </div>
           {/if}
           {#if settings.screens.length > 1 || chosenUnplugged}
             <label class="row separated">
               <div>
-                <div class="label">Écran</div>
-                <div class="hint">S'il est débranché, le notch revient sur l'écran principal.</div>
+                <div class="label">{t('settings.screen')}</div>
+                <div class="hint">{t('settings.screen.hint')}</div>
               </div>
               <select
                 value={selectedScreen}
@@ -542,18 +551,18 @@
                 {#if chosenUnplugged}
                   <!-- Only while the chosen screen is unplugged: says why the
                        notch is on the primary screen for now. -->
-                  <option value={settings.screen}>Écran choisi (débranché)</option>
+                  <option value={settings.screen}>{t('settings.screen.unplugged')}</option>
                 {/if}
               </select>
             </label>
           {/if}
           <label class="row separated">
             <div>
-              <div class="label">Masquer le notch en plein écran</div>
+              <div class="label">{t('settings.fullscreen')}</div>
               <div class="hint">
-                Jeux, vidéos, présentations. Le bureau et Alt+Tab ne comptent pas.
+                {t('settings.fullscreen.hint')}
                 {#if settings.resistanceAvailable}
-                  Désactivé, la résistance du curseur reste aussi active en plein écran.
+                  {t('settings.fullscreen.resistance')}
                 {/if}
               </div>
             </div>
@@ -566,18 +575,17 @@
           </label>
         </section>
         <section>
-          <h2>Curseur</h2>
+          <h2>{t('settings.cursor')}</h2>
           <div class="stack">
             <div>
-              <div class="label">Résistance au bord du notch</div>
+              <div class="label">{t('settings.resistance')}</div>
               <div class="hint">
                 {#if !settings.resistanceAvailable}
-                  Disponible uniquement sous Windows pour l'instant.
+                  {t('settings.resistance.windows_only')}
                 {:else if resistance === 'impassable'}
-                  Le curseur ne peut plus entrer : le notch ne s'ouvre plus au survol ni ne se
-                  clique, seules les alertes l'ouvrent. Le mode déplacement suspend la résistance.
+                  {t('settings.resistance.impassable_hint')}
                 {:else}
-                  Le curseur bute contre le notch : il faut pousser pour entrer.
+                  {t('settings.resistance.hint')}
                 {/if}
               </div>
             </div>
@@ -588,8 +596,8 @@
                 min="0"
                 max={resistanceChoices.length - 1}
                 step="1"
-                aria-label="Résistance du curseur"
-                aria-valuetext={resistanceChoices[resistanceIndex].label}
+                aria-label={t('settings.resistance')}
+                aria-valuetext={t(resistanceChoices[resistanceIndex].key)}
                 disabled={!settings.resistanceAvailable}
                 bind:value={resistanceIndex}
                 onchange={() => setResistance(resistanceChoices[resistanceIndex].value)}
@@ -605,7 +613,7 @@
                       setResistance(choice.value)
                     }}
                   >
-                    {choice.label}
+                    {t(choice.key)}
                   </button>
                 {/each}
               </div>
@@ -614,12 +622,12 @@
         </section>
       {:else if page === 'modules' && openModule}
         {@const ModuleSettings = moduleUis[openModule.id]?.settings}
-        <button class="back" onclick={() => (openModuleId = null)}>← Modules</button>
+        <button class="back" onclick={() => (openModuleId = null)}>← {t('settings.page.modules')}</button>
         <h1>{openModule.name}</h1>
         <section>
           <label class="row">
             <div>
-              <div class="label">Activé</div>
+              <div class="label">{t('settings.module.enabled')}</div>
               {#if openModule.description}<div class="hint">{openModule.description}</div>{/if}
             </div>
             <input
@@ -639,12 +647,8 @@
           </section>
         {/if}
       {:else if page === 'modules'}
-        <h1>Modules</h1>
-        <p class="intro">
-          Fais glisser un module par sa poignée pour choisir l'ordre d'affichage dans le notch : le
-          premier est le plus près du bord. L'épingle place un module dans son propre petit notch,
-          à côté du principal.
-        </p>
+        <h1>{t('settings.page.modules')}</h1>
+        <p class="intro">{t('settings.modules.intro')}</p>
         {#each orderedModules as module, index (module.id)}
           {@const ui = moduleUis[module.id]}
           {@const Icon = ui?.icon ?? Puzzle}
@@ -660,8 +664,8 @@
           >
             <button
               class="grip"
-              title="Faire glisser pour changer l'ordre"
-              aria-label="Changer la place de {module.name}"
+              title={t('settings.module.grip')}
+              aria-label={t('settings.module.grip_label', { name: module.name })}
               onpointerdown={(e) => startReorder(e, module.id)}
               onpointermove={reorder}
               onpointerup={endReorder}
@@ -677,15 +681,15 @@
             <div class="actions">
               {#if module.pin && module.pinnable}
                 <select
-                  aria-label="Côté de l'épingle de {module.name}"
+                  aria-label={t('settings.module.pin_side_label', { name: module.name })}
                   title={settings.edge === 'left' || settings.edge === 'right'
-                    ? 'Gauche : au-dessus du notch, Droite : au-dessous'
-                    : 'Côté du notch où se place l’épingle'}
+                    ? t('settings.module.pin_side_vertical')
+                    : t('settings.module.pin_side')}
                   value={module.pin}
                   onchange={(e) => setModulePin(module, e.currentTarget.value as PinSide)}
                 >
                   {#each pinSideChoices as choice (choice.value)}
-                    <option value={choice.value}>{choice.label}</option>
+                    <option value={choice.value}>{t(choice.key)}</option>
                   {/each}
                 </select>
               {/if}
@@ -695,13 +699,13 @@
                 disabled={!module.pinnable}
                 aria-pressed={!!module.pin && module.pinnable}
                 title={!module.enabled
-                  ? 'Active le module pour l’épingler'
+                  ? t('settings.module.pin_enable_first')
                   : !module.pinnable
-                    ? 'Le premier module est toujours dans le notch'
+                    ? t('settings.module.pin_first')
                     : module.pin
-                      ? 'Détacher du notch'
-                      : 'Épingler à côté du notch'}
-                aria-label="Épingler {module.name}"
+                      ? t('settings.module.unpin')
+                      : t('settings.module.pin')}
+                aria-label={t('settings.module.pin_label', { name: module.name })}
                 onclick={() => setModulePin(module, module.pin ? null : 'auto')}
               >
                 <PinIcon size={16} />
@@ -709,7 +713,7 @@
               <input
                 type="checkbox"
                 class="switch"
-                aria-label="Activer {module.name}"
+                aria-label={t('settings.module.enable_label', { name: module.name })}
                 checked={module.enabled}
                 onchange={(e) => setModuleEnabled(module, e.currentTarget.checked)}
               />
@@ -717,11 +721,11 @@
                 class="icon"
                 disabled={!configurable}
                 title={configurable
-                  ? `Paramètres de ${module.name}`
+                  ? t('settings.module.settings', { name: module.name })
                   : module.enabled
-                    ? 'Aucun réglage'
-                    : 'Active le module pour le régler'}
-                aria-label="Paramètres de {module.name}"
+                    ? t('settings.module.no_settings')
+                    : t('settings.module.enable_first')}
+                aria-label={t('settings.module.settings', { name: module.name })}
                 onclick={() => (openModuleId = module.id)}
               >
                 <SettingsIcon size={16} />
@@ -730,22 +734,22 @@
           </section>
         {/each}
       {:else}
-        <h1>À propos</h1>
+        <h1>{t('settings.page.about')}</h1>
         <section>
           <div class="row">
-            <div class="label">Version</div>
+            <div class="label">{t('settings.version')}</div>
             <div>{version}</div>
           </div>
           <div class="row">
             <div>
-              <div class="label">Dossier de configuration</div>
+              <div class="label">{t('settings.config_dir')}</div>
               <div class="hint path">{settings.configDir}</div>
             </div>
           </div>
           <div class="row">
             <div>
-              <div class="label">Licence</div>
-              <div class="hint">Le cœur de winotch est un logiciel libre sous licence GPL-3.0.</div>
+              <div class="label">{t('settings.license')}</div>
+              <div class="hint">{t('settings.license.hint')}</div>
             </div>
           </div>
         </section>

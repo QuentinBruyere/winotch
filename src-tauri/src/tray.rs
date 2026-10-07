@@ -4,37 +4,41 @@ use tauri::{
     tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
 };
 
-use crate::NOTCH_LABEL;
+use crate::{NOTCH_LABEL, t};
+
+const TRAY_ID: &str = "main";
 
 /// Tray menu: quick actions only, everything else lives in the settings window.
-pub fn create(app: &AppHandle) -> tauri::Result<()> {
-    let toggle = MenuItem::with_id(
-        app,
-        "toggle",
-        "Afficher / masquer le notch",
-        true,
-        None::<&str>,
-    )?;
-    let settings = MenuItem::with_id(app, "settings", "Paramètres…", true, None::<&str>)?;
-    let quit = MenuItem::with_id(app, "quit", "Quitter winotch", true, None::<&str>)?;
-    let menu = Menu::with_items(
+fn menu(app: &AppHandle) -> tauri::Result<Menu<tauri::Wry>> {
+    let item = |id: &str, key: &str| MenuItem::with_id(app, id, t!(key), true, None::<&str>);
+    Menu::with_items(
         app,
         &[
-            &settings,
-            &toggle,
+            &item("settings", "tray.settings")?,
+            &item("toggle", "tray.toggle")?,
             &PredefinedMenuItem::separator(app)?,
-            &quit,
+            &item("quit", "tray.quit")?,
         ],
-    )?;
+    )
+}
 
-    TrayIconBuilder::with_id("main")
+/// Rebuilds the menu in the current language (ADR-0012).
+pub fn retranslate(app: &AppHandle) -> tauri::Result<()> {
+    if let Some(tray) = app.tray_by_id(TRAY_ID) {
+        tray.set_menu(Some(menu(app)?))?;
+    }
+    Ok(())
+}
+
+pub fn create(app: &AppHandle) -> tauri::Result<()> {
+    TrayIconBuilder::with_id(TRAY_ID)
         .icon(
             app.default_window_icon()
                 .cloned()
                 .expect("bundle icon is configured"),
         )
         .tooltip("winotch")
-        .menu(&menu)
+        .menu(&menu(app)?)
         .show_menu_on_left_click(false)
         // Left click opens the settings, right click shows the menu.
         .on_tray_icon_event(|tray, event| {

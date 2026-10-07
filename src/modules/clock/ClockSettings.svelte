@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, type Key } from '../../lib/i18n.svelte'
   import type { ModuleSettingsProps } from '..'
 
   // Mirrors `Settings` in src-tauri/src/modules/clock/format.rs
@@ -14,19 +15,20 @@
   let { data: raw, call }: ModuleSettingsProps = $props()
   const data = $derived(raw as Data)
 
-  const showChoices: { value: Show; label: string }[] = [
-    { value: 'time_and_date', label: 'Heure et date' },
-    { value: 'time', label: 'Heure' },
-    { value: 'date', label: 'Date' },
+  const showChoices: { value: Show; key: Key }[] = [
+    { value: 'time_and_date', key: 'clock.show.time_and_date' },
+    { value: 'time', key: 'clock.show.time' },
+    { value: 'date', key: 'clock.show.date' },
   ]
-  const hourChoices: { value: boolean; label: string }[] = [
-    { value: false, label: '24 h (14:32)' },
-    { value: true, label: '12 h (2:32 PM)' },
+  const hourChoices: { value: boolean; key: Key }[] = [
+    { value: false, key: 'clock.hour.24' },
+    { value: true, key: 'clock.hour.12' },
   ]
-  const dateChoices: { value: DateStyle; label: string }[] = [
-    { value: 'long', label: 'lundi 5 octobre' },
-    { value: 'short', label: 'lun. 5 oct.' },
-    { value: 'numeric', label: '05/10/2026' },
+  // Examples of each style, in the shown language.
+  const dateChoices: { value: DateStyle; key: Key }[] = [
+    { value: 'long', key: 'clock.example.long' },
+    { value: 'short', key: 'clock.example.short' },
+    { value: 'numeric', key: 'clock.example.numeric' },
   ]
 
   const showsTime = $derived(data.show !== 'date')
@@ -39,8 +41,8 @@
 </script>
 
 <div class="stack">
-  <div class="label">Affichage</div>
-  <div class="segmented" style:grid-template-columns="repeat(3, 1fr)" role="radiogroup" aria-label="Affichage">
+  <div class="label">{t('clock.show')}</div>
+  <div class="segmented" style:grid-template-columns="repeat(3, 1fr)" role="radiogroup" aria-label={t('clock.show')}>
     {#each showChoices as choice (choice.value)}
       <button
         role="radio"
@@ -48,7 +50,7 @@
         class:selected={data.show === choice.value}
         onclick={() => update({ show: choice.value })}
       >
-        {choice.label}
+        {t(choice.key)}
       </button>
     {/each}
   </div>
@@ -56,8 +58,8 @@
 
 {#if showsTime}
   <div class="stack separated">
-    <div class="label">Format de l'heure</div>
-    <div class="segmented" style:grid-template-columns="repeat(2, 1fr)" role="radiogroup" aria-label="Format de l'heure">
+    <div class="label">{t('clock.hour_format')}</div>
+    <div class="segmented" style:grid-template-columns="repeat(2, 1fr)" role="radiogroup" aria-label={t('clock.hour_format')}>
       {#each hourChoices as choice (choice.value)}
         <button
           role="radio"
@@ -65,13 +67,13 @@
           class:selected={data.hour12 === choice.value}
           onclick={() => update({ hour12: choice.value })}
         >
-          {choice.label}
+          {t(choice.key)}
         </button>
       {/each}
     </div>
   </div>
   <label class="row separated">
-    <div class="label">Afficher les secondes</div>
+    <div class="label">{t('clock.seconds')}</div>
     <input
       type="checkbox"
       class="switch"
@@ -83,8 +85,8 @@
 
 {#if showsDate}
   <div class="stack separated">
-    <div class="label">Format de la date</div>
-    <div class="segmented" style:grid-template-columns="repeat(3, 1fr)" role="radiogroup" aria-label="Format de la date">
+    <div class="label">{t('clock.date_format')}</div>
+    <div class="segmented" style:grid-template-columns="repeat(3, 1fr)" role="radiogroup" aria-label={t('clock.date_format')}>
       {#each dateChoices as choice (choice.value)}
         <button
           role="radio"
@@ -92,7 +94,7 @@
           class:selected={data.dateStyle === choice.value}
           onclick={() => update({ dateStyle: choice.value })}
         >
-          {choice.label}
+          {t(choice.key)}
         </button>
       {/each}
     </div>

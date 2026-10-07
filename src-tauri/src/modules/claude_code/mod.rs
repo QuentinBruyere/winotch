@@ -68,12 +68,12 @@ impl Module for ClaudeCode {
         "claude-code"
     }
 
-    fn name(&self) -> &'static str {
-        "Claude Code"
+    fn name(&self) -> String {
+        crate::t!("claude-code.name")
     }
 
-    fn description(&self) -> &'static str {
-        "L'activité de tes sessions Claude Code, en temps réel."
+    fn description(&self) -> String {
+        crate::t!("claude-code.description")
     }
 
     fn start(&self, host: &Host) {
@@ -100,7 +100,10 @@ impl Module for ClaudeCode {
             }
             Err(e) => {
                 log::error!("hook server: {e}");
-                Some(format!("Port {} occupé", settings.server_port))
+                Some(crate::t!(
+                    "claude-code.port_busy",
+                    port = settings.server_port
+                ))
             }
         };
         *inner.server_error.lock().unwrap() = error;
@@ -151,9 +154,9 @@ impl Module for ClaudeCode {
         let error = self.inner.server_error.lock().unwrap().clone();
         Some(error.unwrap_or_else(|| {
             if self.inner.hooks_installed() {
-                "Aucune session".into()
+                crate::t!("claude-code.no_session")
             } else {
-                "Claude Code non connecté".into()
+                crate::t!("claude-code.not_connected")
             }
         }))
     }
@@ -181,17 +184,23 @@ impl Module for ClaudeCode {
         let inner = &self.inner;
         let result = match action {
             "connect" => {
-                let connected = args["connected"].as_bool().ok_or("connected manquant")?;
+                let connected = args["connected"]
+                    .as_bool()
+                    .ok_or_else(|| crate::t!("claude-code.missing_connected"))?;
                 inner.connect(connected)
             }
             "set_port" => {
-                let port = args["port"].as_u64().ok_or("port manquant")?;
+                let port = args["port"]
+                    .as_u64()
+                    .ok_or_else(|| crate::t!("claude-code.missing_port"))?;
                 inner.set_port(u16::try_from(port).unwrap_or(0))
             }
             "set_session_timeout" => {
-                let minutes = args["minutes"].as_u64().ok_or("minutes manquant")?;
+                let minutes = args["minutes"]
+                    .as_u64()
+                    .ok_or_else(|| crate::t!("claude-code.missing_minutes"))?;
                 if !(5..=1440).contains(&minutes) {
-                    return Err("Entre 5 et 1440 minutes".into());
+                    return Err(crate::t!("claude-code.timeout_range"));
                 }
                 inner.update_settings(|s| s.session_timeout_minutes = minutes);
                 Ok(())
@@ -237,7 +246,7 @@ impl Inner {
         let path = self
             .hooks_path
             .get()
-            .ok_or("dossier personnel introuvable")?;
+            .ok_or_else(|| crate::t!("claude-code.no_home"))?;
         let result = if connect {
             let port = self.settings.lock().unwrap().server_port;
             let token = self.token.get().ok_or("no hook token")?;
@@ -246,15 +255,15 @@ impl Inner {
             hooks::uninstall(path)
         };
         let message = match &result {
-            Ok(()) if connect => "Claude Code connecté",
-            Ok(()) => "Claude Code déconnecté",
+            Ok(()) if connect => crate::t!("claude-code.connected"),
+            Ok(()) => crate::t!("claude-code.disconnected"),
             Err(e) => {
                 log::error!("cannot update {}: {e}", path.display());
-                "Échec : voir les logs"
+                crate::t!("claude-code.failed")
             }
         };
         if let Some(host) = self.host.get() {
-            host.notice(message);
+            host.notice(&message);
         }
         result.map_err(|e| e.to_string())
     }
@@ -263,7 +272,7 @@ impl Inner {
     /// new port is opened first, so a busy port leaves everything as it was.
     fn set_port(self: &Arc<Self>, port: u16) -> Result<(), String> {
         if port < 1024 {
-            return Err("Choisis un port entre 1024 et 65535".into());
+            return Err(crate::t!("claude-code.port_range"));
         }
         let current = self.settings.lock().unwrap().server_port;
         let running = self.server.lock().unwrap().is_some();
@@ -271,7 +280,7 @@ impl Inner {
             return Ok(());
         }
         let new_server = Inner::start_server(self, port)
-            .map_err(|e| format!("Port {port} indisponible : {e}"))?;
+            .map_err(|e| crate::t!("claude-code.port_unavailable", port = port, error = e))?;
         if let Some(old) = self.server.lock().unwrap().replace(new_server) {
             old.unblock();
         }
@@ -289,18 +298,19 @@ impl Inner {
 
 fn item(session: &Session) -> Item {
     use SessionState::*;
-    let (label, tone) = match session.state {
-        Idle => ("En attente", Tone::Neutral),
-        Working => ("Au travail", Tone::Active),
-        NeedsPermission => ("Permission requise", Tone::Attention),
-        WaitingInput => ("Attend ta réponse", Tone::Question),
-        Done => ("Terminé", Tone::Success),
-        Error => ("Erreur", Tone::Error),
+    let (key, tone) = match session.state {
+        Idle => ("claude-code.state.idle", Tone::Neutral),
+        Working => ("claude-code.state.working", Tone::Active),
+        NeedsPermission => ("claude-code.state.permission", Tone::Attention),
+        WaitingInput => ("claude-code.state.waiting", Tone::Question),
+        Done => ("claude-code.state.done", Tone::Success),
+        Error => ("claude-code.state.error", Tone::Error),
     };
+    let label = crate::t!(key);
     Item {
         id: session.id.clone(),
         title: project_name(session.cwd.as_deref()),
-        label: label.into(),
+        label,
         detail: session.tool.clone(),
         tone,
         dot: true,

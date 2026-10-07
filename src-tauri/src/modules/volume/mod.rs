@@ -9,6 +9,7 @@ use std::sync::mpsc::Sender;
 use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::module::{Action, Host, Icon, Item, Module, Slider};
+use crate::t;
 
 /// The output's volume, as shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -67,12 +68,12 @@ impl Module for Volume {
         "volume"
     }
 
-    fn name(&self) -> &'static str {
-        "Volume"
+    fn name(&self) -> String {
+        crate::t!("volume.name")
     }
 
-    fn description(&self) -> &'static str {
-        "Le volume du son, réglable depuis le notch."
+    fn description(&self) -> String {
+        crate::t!("volume.description")
     }
 
     fn enabled_by_default(&self) -> bool {
@@ -103,9 +104,9 @@ impl Module for Volume {
 
     fn placeholder(&self) -> Option<String> {
         Some(if cfg!(windows) {
-            "Aucune sortie audio".into()
+            t!("volume.no_output")
         } else {
-            "Disponible uniquement sous Windows".into()
+            t!("volume.windows_only")
         })
     }
 
@@ -139,17 +140,17 @@ fn level_icon(level: Level) -> Icon {
 fn item(level: Level) -> Item {
     let icon = level_icon(level);
     let tooltip = if level.muted {
-        "Rétablir le son"
+        t!("volume.unmute")
     } else {
-        "Couper le son"
+        t!("volume.mute")
     };
     Item {
         id: "level".into(),
-        title: "Volume".into(),
+        title: t!("volume.name"),
         label: if level.muted {
-            "Muet".into()
+            t!("volume.muted")
         } else {
-            format!("{} %", level.percent)
+            t!("volume.percent", percent = level.percent)
         },
         slider: Some(Slider {
             value: f64::from(level.percent),
@@ -157,7 +158,7 @@ fn item(level: Level) -> Item {
             max: 100.0,
             step: 1.0,
         }),
-        actions: vec![Action::icon("mute", icon, tooltip)],
+        actions: vec![Action::icon("mute", icon, &tooltip)],
         // The compact views show the icon, and the value only for a moment
         // after a change (`Host::spotlight`), like the stopwatch at rest.
         quiet: true,
@@ -176,7 +177,7 @@ mod tests {
             percent: 45,
             muted: false,
         });
-        assert_eq!(on.label, "45 %");
+        assert_eq!(on.label, "45%");
         assert_eq!(on.slider.as_ref().map(|s| s.value), Some(45.0));
         assert_eq!(on.actions[0].icon, Some(Icon::VolumeMedium));
         assert_eq!(on.icon, Some(Icon::VolumeMedium));
@@ -185,7 +186,7 @@ mod tests {
             percent: 45,
             muted: true,
         });
-        assert_eq!(off.label, "Muet");
+        assert_eq!(off.label, "Muted");
         assert_eq!(off.actions[0].icon, Some(Icon::Muted));
     }
 

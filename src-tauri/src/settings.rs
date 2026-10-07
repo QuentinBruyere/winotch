@@ -67,6 +67,12 @@ pub struct Settings {
     module_layout: crate::config::ModuleLayout,
     notch_speed: crate::config::NotchSpeed,
     appearance: crate::config::Appearance,
+    /// Chosen language code, `None` = the system's (ADR-0012).
+    language: Option<String>,
+    /// Translated languages: code and own name.
+    languages: Vec<(&'static str, &'static str)>,
+    /// The language shown, the system's resolved.
+    shown_language: &'static str,
     config_dir: String,
 }
 
@@ -98,8 +104,8 @@ pub fn current(app: &AppHandle) -> Settings {
                 let enabled = crate::module::is_enabled(m, &config);
                 ModuleInfo {
                     id: m.id().into(),
-                    name: m.name().into(),
-                    description: m.description().into(),
+                    name: m.name(),
+                    description: m.description(),
                     enabled,
                     pin: config.pins.get(m.id()).copied(),
                     pinnable: enabled && first_enabled.as_deref() != Some(m.id()),
@@ -110,6 +116,9 @@ pub fn current(app: &AppHandle) -> Settings {
         module_layout: config.module_layout,
         notch_speed: config.notch_speed,
         appearance: config.appearance,
+        language: config.language.clone(),
+        languages: crate::i18n::LANGUAGES.to_vec(),
+        shown_language: crate::i18n::language(),
         config_dir: state.config_dir.display().to_string(),
     }
 }
@@ -143,7 +152,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     }
     let window =
         WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
-            .title("Paramètres de winotch")
+            .title(crate::t!("settings.window_title"))
             .inner_size(760.0, 560.0)
             .min_inner_size(600.0, 420.0)
             .center()
@@ -222,10 +231,10 @@ pub fn set_style(app: AppHandle, style: Style) -> Result<(), String> {
 #[tauri::command]
 pub fn set_gap(app: AppHandle, gap: u32) -> Result<(), String> {
     if !GAP_RANGE.contains(&gap) {
-        return Err(format!(
-            "Écart entre {} et {} px",
-            GAP_RANGE.start(),
-            GAP_RANGE.end()
+        return Err(crate::t!(
+            "settings.gap_range",
+            min = GAP_RANGE.start(),
+            max = GAP_RANGE.end()
         ));
     }
     update_config(&app, |c| c.placement.gap = gap);
@@ -316,7 +325,7 @@ pub fn set_module_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(
         .modules
         .iter()
         .find(|m| m.id() == id)
-        .ok_or_else(|| format!("module inconnu : {id}"))?;
+        .ok_or_else(|| crate::t!("settings.unknown_module", id = id))?;
     let was_enabled = crate::module::is_enabled(module.as_ref(), &state.config.lock().unwrap());
     if was_enabled != enabled {
         update_config(&app, |c| {
@@ -395,6 +404,24 @@ pub fn set_appearance(app: AppHandle, appearance: crate::config::Appearance) {
     changed(&app);
 }
 
+/// A language code, or `None` for the system's (DF-0015). Applies at once:
+/// the pages, the notch's items, the tray menu and this window's title.
+#[tauri::command]
+pub fn set_language(app: AppHandle, language: Option<String>) {
+    update_config(&app, |c| c.language = language.clone());
+    crate::i18n::set_language(crate::i18n::resolve(language.as_deref()));
+    if let Err(e) = crate::tray::retranslate(&app) {
+        log::warn!("cannot translate the tray menu: {e}");
+    }
+    if let Some(window) = app.get_webview_window(SETTINGS_LABEL)
+        && let Err(e) = window.set_title(&crate::t!("settings.window_title"))
+    {
+        log::warn!("cannot translate the settings window title: {e}");
+    }
+    changed(&app);
+    crate::emit_content(&app);
+}
+
 /// The settings window's theme; `None` follows Windows.
 fn window_theme(app: &AppHandle) -> Option<Theme> {
     match app.state::<AppState>().config.lock().unwrap().appearance {
@@ -417,9 +444,9 @@ pub fn module_call(
         .modules
         .iter()
         .find(|m| m.id() == id)
-        .ok_or_else(|| format!("module inconnu : {id}"))?;
+        .ok_or_else(|| crate::t!("settings.unknown_module", id = id))?;
     if !crate::module::is_enabled(module.as_ref(), &state.config.lock().unwrap()) {
-        return Err(format!("{} est désactivé", module.name()));
+        return Err(crate::t!("settings.module_disabled", name = module.name()));
     }
     module.call(&action, args.unwrap_or(Value::Null))
 }

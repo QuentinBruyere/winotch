@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { t, type Key } from '../../lib/i18n.svelte'
   import type { ModuleSettingsProps } from '..'
 
   // Mirrors `Settings` in src-tauri/src/modules/timer/mod.rs
@@ -35,14 +36,12 @@
   }}
 >
   <div>
-    <div class="label">Durée par défaut</div>
-    <div class="hint">
-      En minutes, celle du minuteur à son lancement. À 0, on ajoute les minutes depuis le notch.
-    </div>
+    <div class="label">{t('timer.default')}</div>
+    <div class="hint">{t('timer.default_hint')}</div>
   </div>
   <div class="field">
     <input type="number" min="0" max="600" bind:value={duration} />
-    <button disabled={duration === String(data.defaultMinutes)}>Appliquer</button>
+    <button disabled={duration === String(data.defaultMinutes)}>{t('settings.apply')}</button>
   </div>
 </form>
 <form
@@ -53,11 +52,11 @@
   }}
 >
   <div>
-    <div class="label">Durées favorites</div>
-    <div class="hint">En minutes, séparées par des virgules (5 au plus). Un clic dans le notch les choisit.</div>
+    <div class="label">{t('timer.favorites_setting')}</div>
+    <div class="hint">{t('timer.favorites_hint')}</div>
   </div>
   <div class="field">
     <input type="text" placeholder="5, 15, 25" bind:value={favorites} />
-    <button disabled={favorites === data.favorites.join(', ')}>Appliquer</button>
+    <button disabled={favorites === data.favorites.join(', ')}>{t('settings.apply')}</button>
   </div>
 </form>

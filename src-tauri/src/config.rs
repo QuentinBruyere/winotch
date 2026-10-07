@@ -41,6 +41,8 @@ pub struct Config {
     pub pins: BTreeMap<String, PinSide>,
     /// Light or dark notch and settings (DF-0014).
     pub appearance: Appearance,
+    /// Language code (ADR-0012); `None` = the system's.
+    pub language: Option<String>,
 }
 
 /// Light or dark theme of every window (DF-0014).
@@ -122,6 +124,7 @@ impl Default for Config {
             notch_speed: NotchSpeed::default(),
             pins: BTreeMap::new(),
             appearance: Appearance::default(),
+            language: None,
         }
     }
 }

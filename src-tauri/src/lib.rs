@@ -1,4 +1,5 @@
 mod config;
+pub mod i18n;
 pub mod module;
 pub mod modules;
 mod notch;
@@ -45,6 +46,8 @@ pub struct Status {
     speed: config::NotchSpeed,
     /// Light or dark (DF-0014), applied by the front.
     appearance: config::Appearance,
+    /// The language shown (ADR-0012), the system's already resolved.
+    language: &'static str,
     /// Center of the compact notch along the edge, from the start of the
     /// window, in logical pixels: every shape is centered on it, then kept
     /// inside the window. `None` = the middle of the window.
@@ -139,6 +142,7 @@ fn status(state: &AppState) -> Status {
         layout: config.module_layout,
         speed: config.notch_speed,
         appearance: config.appearance,
+        language: i18n::language(),
         anchor: notch::anchor(),
     }
 }
@@ -198,6 +202,7 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_module_layout,
             settings::set_notch_speed,
             settings::set_appearance,
+            settings::set_language,
             settings::set_module_pin,
             settings::module_call
         ])
@@ -212,6 +217,12 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
 
             let config_dir = app.path().app_config_dir()?;
             let config = config::load_or_create(&config_dir);
+            for module in &modules {
+                for (language, json) in module.locales() {
+                    i18n::register(language, json);
+                }
+            }
+            i18n::set_language(i18n::resolve(config.language.as_deref()));
             platform::set_resistance_strength(config.cursor_resistance_strength);
             let enabled: Vec<bool> = modules
                 .iter()

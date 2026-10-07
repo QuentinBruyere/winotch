@@ -1,7 +1,7 @@
 //! How the time and the date are written, from the module's settings.
 //! Pure logic, tested.
 
-use chrono::{Datelike, NaiveDateTime, Timelike};
+use chrono::{Datelike, Locale, NaiveDateTime, Timelike};
 use serde::{Deserialize, Serialize};
 
 /// What the notch shows.
@@ -17,12 +17,12 @@ pub enum Show {
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DateStyle {
-    /// "lundi 5 octobre"
+    /// "lundi 5 octobre", "Monday, October 5"
     #[default]
     Long,
-    /// "lun. 5 oct."
+    /// "lun. 5 oct.", "Mon, Oct 5"
     Short,
-    /// "05/10/2026"
+    /// "05/10/2026", "10/05/2026"
     Numeric,
 }
 
@@ -36,33 +36,41 @@ pub struct Settings {
     pub date_style: DateStyle,
 }
 
-const WEEKDAYS: [&str; 7] = [
-    "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi", "dimanche",
-];
-const WEEKDAYS_SHORT: [&str; 7] = ["lun.", "mar.", "mer.", "jeu.", "ven.", "sam.", "dim."];
-const MONTHS: [&str; 12] = [
-    "janvier",
-    "février",
-    "mars",
-    "avril",
-    "mai",
-    "juin",
-    "juillet",
-    "août",
-    "septembre",
-    "octobre",
-    "novembre",
-    "décembre",
-];
-const MONTHS_SHORT: [&str; 12] = [
-    "janv.", "févr.", "mars", "avr.", "mai", "juin", "juil.", "août", "sept.", "oct.", "nov.",
-    "déc.",
-];
+/// How dates are written in a language: the patterns come from the
+/// translations (`clock.date.*`, chrono's `%` codes with `{day}`), the day
+/// and month names from chrono's locales.
+pub struct Words {
+    long: String,
+    short: String,
+    numeric: String,
+    /// The 1st of the month, e.g. "1er" in French.
+    first_day: String,
+    locale: Locale,
+}
+
+impl Words {
+    pub fn of(language: &str) -> Self {
+        let t = |key| crate::i18n::translate_in(language, key, &[]);
+        Self {
+            long: t("clock.date.long"),
+            short: t("clock.date.short"),
+            numeric: t("clock.date.numeric"),
+            first_day: t("clock.date.first_day"),
+            locale: match language {
+                "de" => Locale::de_DE,
+                "es" => Locale::es_ES,
+                "fr" => Locale::fr_FR,
+                "ja" => Locale::ja_JP,
+                _ => Locale::en_US,
+            },
+        }
+    }
+}
 
 /// The item's label (main text) and title (secondary text, may be empty).
-pub fn format(now: NaiveDateTime, settings: &Settings) -> (String, String) {
+pub fn format(now: NaiveDateTime, settings: &Settings, words: &Words) -> (String, String) {
     let time = time(now, settings);
-    let date = date(now, settings.date_style);
+    let date = date(now, settings.date_style, words);
     match settings.show {
         Show::TimeAndDate => (time, date),
         Show::Time => (time, String::new()),
@@ -85,18 +93,19 @@ fn time(now: NaiveDateTime, settings: &Settings) -> String {
     }
 }
 
-fn date(now: NaiveDateTime, style: DateStyle) -> String {
-    let weekday = now.weekday().num_days_from_monday() as usize;
-    let month = now.month0() as usize;
+fn date(now: NaiveDateTime, style: DateStyle, words: &Words) -> String {
+    let pattern = match style {
+        DateStyle::Long => &words.long,
+        DateStyle::Short => &words.short,
+        DateStyle::Numeric => &words.numeric,
+    };
     let day = match now.day() {
-        1 => "1er".to_owned(),
+        1 => words.first_day.clone(),
         d => d.to_string(),
     };
-    match style {
-        DateStyle::Long => format!("{} {day} {}", WEEKDAYS[weekday], MONTHS[month]),
-        DateStyle::Short => format!("{} {day} {}", WEEKDAYS_SHORT[weekday], MONTHS_SHORT[month]),
-        DateStyle::Numeric => format!("{:02}/{:02}/{}", now.day(), now.month(), now.year()),
-    }
+    now.date()
+        .format_localized(&pattern.replace("{day}", &day), words.locale)
+        .to_string()
 }
 
 #[cfg(test)]
@@ -111,6 +120,10 @@ mod tests {
             .unwrap()
     }
 
+    fn format_fr(now: NaiveDateTime, settings: &Settings) -> (String, String) {
+        format(now, settings, &Words::of("fr"))
+    }
+
     fn pair(a: &str, b: &str) -> (String, String) {
         (a.into(), b.into())
     }
@@ -119,11 +132,11 @@ mod tests {
     fn default_is_24h_time_and_long_date() {
         let settings = Settings::default();
         assert_eq!(
-            format(at(2026, 10, 5, 14, 32, 7), &settings),
+            format_fr(at(2026, 10, 5, 14, 32, 7), &settings),
             pair("14:32", "lundi 5 octobre")
         );
         assert_eq!(
-            format(at(2026, 2, 1, 9, 5, 0), &settings),
+            format_fr(at(2026, 2, 1, 9, 5, 0), &settings),
             pair("09:05", "dimanche 1er février")
         );
     }
@@ -135,12 +148,12 @@ mod tests {
             show: Show::Time,
             ..Settings::default()
         };
-        assert_eq!(format(now, &time), pair("14:32", ""));
+        assert_eq!(format_fr(now, &time), pair("14:32", ""));
         let date = Settings {
             show: Show::Date,
             ..Settings::default()
         };
-        assert_eq!(format(now, &date), pair("lundi 5 octobre", ""));
+        assert_eq!(format_fr(now, &date), pair("lundi 5 octobre", ""));
     }
 
     #[test]
@@ -152,10 +165,13 @@ mod tests {
             ..Settings::default()
         };
         assert_eq!(
-            format(at(2026, 10, 5, 14, 32, 7), &settings).0,
+            format_fr(at(2026, 10, 5, 14, 32, 7), &settings).0,
             "2:32:07 PM"
         );
-        assert_eq!(format(at(2026, 10, 5, 0, 5, 0), &settings).0, "12:05:00 AM");
+        assert_eq!(
+            format_fr(at(2026, 10, 5, 0, 5, 0), &settings).0,
+            "12:05:00 AM"
+        );
     }
 
     #[test]
@@ -166,11 +182,52 @@ mod tests {
             date_style: DateStyle::Short,
             ..Settings::default()
         };
-        assert_eq!(format(now, &short).0, "lun. 5 oct.");
+        assert_eq!(format_fr(now, &short).0, "lun. 5 oct.");
         let numeric = Settings {
             date_style: DateStyle::Numeric,
             ..short
         };
-        assert_eq!(format(now, &numeric).0, "05/10/2026");
+        assert_eq!(format_fr(now, &numeric).0, "05/10/2026");
+    }
+
+    #[test]
+    fn english_dates() {
+        let now = at(2026, 10, 5, 14, 32, 0);
+        let english = |date_style| {
+            let settings = Settings {
+                show: Show::Date,
+                date_style,
+                ..Settings::default()
+            };
+            format(now, &settings, &Words::of("en")).0
+        };
+        assert_eq!(english(DateStyle::Long), "Monday, October 5");
+        assert_eq!(english(DateStyle::Short), "Mon, Oct 5");
+        assert_eq!(english(DateStyle::Numeric), "10/05/2026");
+    }
+
+    /// The examples shown in the settings are what the notch really writes.
+    #[test]
+    fn every_language_writes_its_examples() {
+        let now = at(2026, 10, 5, 14, 32, 0);
+        for (language, _) in crate::i18n::LANGUAGES {
+            let words = Words::of(language);
+            for (style, example) in [
+                (DateStyle::Long, "clock.example.long"),
+                (DateStyle::Short, "clock.example.short"),
+                (DateStyle::Numeric, "clock.example.numeric"),
+            ] {
+                let settings = Settings {
+                    show: Show::Date,
+                    date_style: style,
+                    ..Settings::default()
+                };
+                assert_eq!(
+                    format(now, &settings, &words).0,
+                    crate::i18n::translate_in(language, example, &[]),
+                    "{language} {style:?}"
+                );
+            }
+        }
     }
 }

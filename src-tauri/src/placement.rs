@@ -101,7 +101,7 @@ pub fn choose_screen<'a>(screens: &'a [Screen], wanted: Option<&str>) -> Option<
 }
 
 /// Human labels for the settings, numbered from left to right like the
-/// Windows display settings usually are: "Écran 1 · 1920 × 1080 · principal".
+/// Windows display settings usually are: "Screen 1 · 1920 × 1080 · primary".
 pub fn screen_labels(screens: &[Screen]) -> Vec<(String, String)> {
     let mut ordered: Vec<&Screen> = screens.iter().collect();
     ordered.sort_by_key(|s| (s.bounds.x, s.bounds.y));
@@ -109,13 +109,17 @@ pub fn screen_labels(screens: &[Screen]) -> Vec<(String, String)> {
         .iter()
         .enumerate()
         .map(|(i, s)| {
-            let primary = if s.primary { " · principal" } else { "" };
-            let label = format!(
-                "Écran {} · {} × {}{primary}",
-                i + 1,
-                s.bounds.width,
-                s.bounds.height
+            let label = crate::t!(
+                "screen.label",
+                number = i + 1,
+                width = s.bounds.width,
+                height = s.bounds.height
             );
+            let label = if s.primary {
+                crate::t!("screen.primary", screen = label)
+            } else {
+                label
+            };
             (s.id.clone(), label)
         })
         .collect()
@@ -463,14 +467,11 @@ mod tests {
         let labels = screen_labels(&screens);
         assert_eq!(
             labels[0],
-            ("DISPLAY2".into(), "Écran 1 · 1920 × 1080".into())
+            ("DISPLAY2".into(), "Screen 1 · 1920 × 1080".into())
         );
         assert_eq!(
             labels[1],
-            (
-                "DISPLAY1".into(),
-                "Écran 2 · 2560 × 1080 · principal".into()
-            )
+            ("DISPLAY1".into(), "Screen 2 · 2560 × 1080 · primary".into())
         );
     }
 

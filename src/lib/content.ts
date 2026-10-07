@@ -155,6 +155,8 @@ export interface Status {
   layout: ModuleLayout
   speed: NotchSpeed
   appearance: Appearance
+  // The language shown (ADR-0012), the system's already resolved.
+  language: string
   // Center of the compact notch along the edge, from the start of the window,
   // in logical pixels; null = the middle of the window (DF-0006)
   anchor: number | null

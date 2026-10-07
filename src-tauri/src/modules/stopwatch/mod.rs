@@ -7,6 +7,7 @@ use std::time::{Duration, Instant};
 
 use super::watch::Watch;
 use crate::module::{Action, Host, Icon, Item, Module, Tone, format_duration};
+use crate::t;
 
 /// Check interval while stopped: nothing to redraw, just notice a start.
 const IDLE_WAIT: Duration = Duration::from_millis(500);
@@ -29,12 +30,12 @@ impl Module for Stopwatch {
         "stopwatch"
     }
 
-    fn name(&self) -> &'static str {
-        "Chronomètre"
+    fn name(&self) -> String {
+        crate::t!("stopwatch.name")
     }
 
-    fn description(&self) -> &'static str {
-        "Un chronomètre à lancer depuis le notch."
+    fn description(&self) -> String {
+        crate::t!("stopwatch.description")
     }
 
     fn enabled_by_default(&self) -> bool {
@@ -87,19 +88,19 @@ impl Module for Stopwatch {
 fn item(watch: &Watch, now: Instant) -> Item {
     let mut actions = Vec::new();
     if watch.running() {
-        actions.push(Action::icon("pause", Icon::Pause, "Pause"));
+        actions.push(Action::icon("pause", Icon::Pause, &t!("action.pause")));
     } else {
-        actions.push(Action::icon("start", Icon::Play, "Démarrer"));
+        actions.push(Action::icon("start", Icon::Play, &t!("action.start")));
     }
     if !watch.idle() {
-        actions.push(Action::icon("reset", Icon::Reset, "Remettre à zéro"));
+        actions.push(Action::icon("reset", Icon::Reset, &t!("action.reset")));
     }
     let paused = !watch.running() && !watch.idle();
     Item {
         id: "stopwatch".into(),
-        title: "Chronomètre".into(),
+        title: t!("stopwatch.name"),
         label: format_duration(watch.elapsed(now).as_secs()),
-        detail: paused.then(|| "pause".into()),
+        detail: paused.then(|| t!("item.paused")),
         tone: if watch.running() {
             Tone::Active
         } else {
@@ -154,6 +155,6 @@ mod tests {
         watch.pause(t0 + Duration::from_secs(65));
         let paused = item(&watch, t0 + Duration::from_secs(99));
         assert_eq!(ids(&paused), ["start", "reset"]);
-        assert_eq!(paused.detail.as_deref(), Some("pause"));
+        assert_eq!(paused.detail.as_deref(), Some("paused"));
     }
 }
