@@ -87,6 +87,21 @@ export interface Shape extends Rect {
   attached: boolean
 }
 
+// The box around two places of a moving shape: every place in between too.
+// Its corners are the rounder one's, so neither shape pokes out of them.
+export function around(a: Shape, b: Shape): Shape {
+  const x = Math.min(a.x, b.x)
+  const y = Math.min(a.y, b.y)
+  return {
+    x,
+    y,
+    width: Math.max(a.x + a.width, b.x + b.width) - x,
+    height: Math.max(a.y + a.height, b.y + b.height) - y,
+    radius: Math.min(a.radius, b.radius),
+    attached: a.attached && b.attached,
+  }
+}
+
 // Mirrors `Content` in src-tauri/src/module.rs: sections in the user's order.
 export interface Content {
   sections: Section[]

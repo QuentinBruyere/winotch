@@ -6,6 +6,7 @@
   import { applyAppearance } from './lib/theme'
   import {
     allItems,
+    around,
     corners,
     moduleOf,
     newAlerts,
@@ -280,12 +281,18 @@
 
 
   // The window region: the notch first (the cursor resistance guards it),
-  // then the other cards, the gaps between them and the pins.
-  const shapes = $derived.by<Shape[]>(() => [
-    { ...cardRects[0], radius: cards[0].radius, attached },
-    ...cardRects.slice(1).map((r, i) => ({ ...r, radius: cards[i + 1].radius, attached: false })),
-    ...gapRects.map((r) => ({ ...r, radius: 0, attached: false })),
-    ...pins.map((p) => ({ ...p.rect, radius: p.radius, attached })),
+  // then the other cards, the gaps between them and the pins. Each has a key,
+  // to follow it while it moves.
+  const shapes = $derived.by<(Shape & { key: string })[]>(() => [
+    { key: 'notch', ...cardRects[0], radius: cards[0].radius, attached },
+    ...cardRects.slice(1).map((r, i) => ({
+      key: `card:${i + 1}`,
+      ...r,
+      radius: cards[i + 1].radius,
+      attached: false,
+    })),
+    ...gapRects.map((r, i) => ({ key: `gap:${i}`, ...r, radius: 0, attached: false })),
+    ...pins.map((p) => ({ key: `pin:${p.section.module}`, ...p.rect, radius: p.radius, attached })),
   ])
   // As a string: the shapes are rebuilt whenever a module redraws (every
   // second for a running stopwatch), the region only changes with this.
@@ -433,23 +440,27 @@
     }
   })
 
-  // The clickable area takes in the new shapes at once and lets go of the old
-  // ones only once the animations are over, so they are never clipped. Every
-  // shape since the last settled state is kept: a shape may still be
-  // animating away from a state that lasted less than an animation (going
-  // quickly from a pin to the notch).
+  // While the shapes animate, the clickable area covers each one's whole
+  // way, from every place it went since the last settled state (a shape may
+  // still be moving away from a state that lasted less than an animation)
+  // to its new place: a pin pushed outwards by its neighbor opening is never
+  // clipped on its way. Once the animations are over, only the new shapes.
   let resizeTimer: ReturnType<typeof setTimeout> | undefined
-  let animating: Shape[] = []
+  let trails = new Map<string, Shape>()
   $effect(() => {
     if (!hitArea) return
-    const next: Shape[] = JSON.parse(hitArea)
+    const next: (Shape & { key: string })[] = JSON.parse(hitArea)
+    const settled = next.map(({ key, ...shape }) => shape)
     clearTimeout(resizeTimer)
+    for (const { key, ...shape } of next) {
+      const trail = trails.get(key)
+      trails.set(key, trail ? around(trail, shape) : shape)
+    }
     // The notch first: the cursor resistance follows the first shape.
-    animating = [...next, ...animating]
-    void invoke('set_hit_area', { shapes: animating })
+    void invoke('set_hit_area', { shapes: [...settled, ...trails.values()] })
     resizeTimer = setTimeout(() => {
-      animating = next
-      void invoke('set_hit_area', { shapes: next })
+      trails = new Map(next.map(({ key, ...shape }) => [key, shape]))
+      void invoke('set_hit_area', { shapes: settled })
     }, duration + 10)
   })
 
