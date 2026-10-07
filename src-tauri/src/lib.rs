@@ -43,6 +43,8 @@ pub struct Status {
     /// Modules in the notch itself, or one card each (DF-0011).
     layout: config::ModuleLayout,
     speed: config::NotchSpeed,
+    /// Light or dark (DF-0014), applied by the front.
+    appearance: config::Appearance,
     /// Center of the compact notch along the edge, from the start of the
     /// window, in logical pixels: every shape is centered on it, then kept
     /// inside the window. `None` = the middle of the window.
@@ -136,6 +138,7 @@ fn status(state: &AppState) -> Status {
         movable: state.movable.load(Ordering::Relaxed),
         layout: config.module_layout,
         speed: config.notch_speed,
+        appearance: config.appearance,
         anchor: notch::anchor(),
     }
 }
@@ -194,6 +197,7 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_module_order,
             settings::set_module_layout,
             settings::set_notch_speed,
+            settings::set_appearance,
             settings::set_module_pin,
             settings::module_call
         ])

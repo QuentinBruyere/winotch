@@ -39,6 +39,19 @@ pub struct Config {
     pub notch_speed: NotchSpeed,
     /// Pinned modules and their side, by module id (DF-0012).
     pub pins: BTreeMap<String, PinSide>,
+    /// Light or dark notch and settings (DF-0014).
+    pub appearance: Appearance,
+}
+
+/// Light or dark theme of every window (DF-0014).
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Appearance {
+    /// Follows the Windows app mode, live.
+    #[default]
+    System,
+    Light,
+    Dark,
 }
 
 /// Side of a pinned module's mini-notch, next to the notch (DF-0012).
@@ -108,6 +121,7 @@ impl Default for Config {
             module_layout: ModuleLayout::default(),
             notch_speed: NotchSpeed::default(),
             pins: BTreeMap::new(),
+            appearance: Appearance::default(),
         }
     }
 }

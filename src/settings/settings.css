@@ -13,7 +13,8 @@ html[data-window='settings'] {
   color: var(--text);
   font-size: 13px;
 
-  @media (prefers-color-scheme: dark) {
+  /* `data-theme` comes from src/lib/theme.ts (DF-0014). */
+  &[data-theme='dark'] {
     --bg: #1c1c1e;
     --card: #2c2c2e;
     --text: #f2f2f7;

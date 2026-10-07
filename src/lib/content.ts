@@ -1,4 +1,5 @@
 import type { SoundKind } from './sound'
+import type { Appearance } from './theme'
 
 // Mirrors `Tone` in src-tauri/src/module.rs: colour, urgency and sound of an item.
 export type Tone = 'neutral' | 'active' | 'attention' | 'question' | 'success' | 'error'
@@ -138,6 +139,7 @@ export interface Status {
   movable: boolean
   layout: ModuleLayout
   speed: NotchSpeed
+  appearance: Appearance
   // Center of the compact notch along the edge, from the start of the window,
   // in logical pixels; null = the middle of the window (DF-0006)
   anchor: number | null

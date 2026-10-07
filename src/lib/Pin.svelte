@@ -122,6 +122,8 @@
     overflow: hidden;
     pointer-events: auto;
     background: var(--notch-bg);
+    outline: 1px solid var(--notch-border);
+    outline-offset: -1px;
     transition:
       left var(--duration) ease,
       top var(--duration) ease,

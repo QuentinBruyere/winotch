@@ -7,7 +7,7 @@ use std::sync::atomic::Ordering;
 use serde::Serialize;
 use serde_json::Value;
 use tauri::webview::PageLoadEvent;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, Theme, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::module::Host;
@@ -66,6 +66,7 @@ pub struct Settings {
     modules: Vec<ModuleInfo>,
     module_layout: crate::config::ModuleLayout,
     notch_speed: crate::config::NotchSpeed,
+    appearance: crate::config::Appearance,
     config_dir: String,
 }
 
@@ -108,6 +109,7 @@ pub fn current(app: &AppHandle) -> Settings {
             .collect(),
         module_layout: config.module_layout,
         notch_speed: config.notch_speed,
+        appearance: config.appearance,
         config_dir: state.config_dir.display().to_string(),
     }
 }
@@ -145,6 +147,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
             .inner_size(760.0, 560.0)
             .min_inner_size(600.0, 420.0)
             .center()
+            .theme(window_theme(app))
             .on_page_load(|window, payload| {
                 if payload.event() == PageLoadEvent::Finished {
                     repaint_notch_host(window.app_handle());
@@ -376,6 +379,29 @@ pub fn set_notch_speed(app: AppHandle, speed: crate::config::NotchSpeed) {
     update_config(&app, |c| c.notch_speed = speed);
     changed(&app);
     crate::emit_status(&app);
+}
+
+/// Light, dark, or the Windows app mode (DF-0014).
+#[tauri::command]
+pub fn set_appearance(app: AppHandle, appearance: crate::config::Appearance) {
+    update_config(&app, |c| c.appearance = appearance);
+    // The pages restyle themselves from the setting; the settings window's
+    // title bar follows the window theme.
+    if let Some(window) = app.get_webview_window(SETTINGS_LABEL)
+        && let Err(e) = window.set_theme(window_theme(&app))
+    {
+        log::warn!("cannot set the settings window theme: {e}");
+    }
+    changed(&app);
+}
+
+/// The settings window's theme; `None` follows Windows.
+fn window_theme(app: &AppHandle) -> Option<Theme> {
+    match app.state::<AppState>().config.lock().unwrap().appearance {
+        crate::config::Appearance::System => None,
+        crate::config::Appearance::Light => Some(Theme::Light),
+        crate::config::Appearance::Dark => Some(Theme::Dark),
+    }
 }
 
 /// Action of a module's settings section, handled by the module itself.

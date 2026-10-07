@@ -1,6 +1,15 @@
+/* Dark by default; `data-theme` comes from src/lib/theme.ts (DF-0014). */
 :root {
   --notch-bg: #000;
   --notch-fg: #f2f2f2;
+  /* Fine contour, so a light notch shows on a white page. */
+  --notch-border: transparent;
+  /* Separators, slider tracks, buttons: the text color, faded. */
+  --notch-line: rgb(255 255 255 / 0.12);
+  --notch-track: rgb(255 255 255 / 0.2);
+  --notch-button: rgb(255 255 255 / 0.12);
+  --notch-button-hover: rgb(255 255 255 / 0.25);
+  --notch-outline: rgb(255 255 255 / 0.35);
   --notch-radius: 14px;
 
   --tone-neutral: #8a8a8a;
@@ -13,6 +22,24 @@
   font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 12px;
   color: var(--notch-fg);
+}
+
+:root[data-theme='light'] {
+  --notch-bg: #f2f2f4;
+  --notch-fg: #1c1c1e;
+  --notch-border: rgb(0 0 0 / 0.14);
+  --notch-line: rgb(0 0 0 / 0.1);
+  --notch-track: rgb(0 0 0 / 0.15);
+  --notch-button: rgb(0 0 0 / 0.07);
+  --notch-button-hover: rgb(0 0 0 / 0.15);
+  --notch-outline: rgb(0 0 0 / 0.35);
+
+  --tone-neutral: #8e8e93;
+  --tone-active: #48484a;
+  --tone-attention: #e08600;
+  --tone-question: #007aff;
+  --tone-success: #28a745;
+  --tone-error: #e5352b;
 }
 
 html,

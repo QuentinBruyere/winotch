@@ -3,6 +3,7 @@
   import { listen } from '@tauri-apps/api/event'
   import Notch from './lib/Notch.svelte'
   import Pin from './lib/Pin.svelte'
+  import { applyAppearance } from './lib/theme'
   import {
     allItems,
     corners,
@@ -73,8 +74,10 @@
     movable: false,
     layout: 'joined',
     speed: 'normal',
+    appearance: 'system',
     anchor: null,
   })
+  $effect(() => applyAppearance(status.appearance))
   let notice = $state<string | null>(null)
   let hovered = $state(false)
   let alerting = $state(false)

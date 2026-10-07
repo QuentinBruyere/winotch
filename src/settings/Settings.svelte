@@ -7,6 +7,7 @@
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import SettingsIcon from '@lucide/svelte/icons/settings'
   import { flip } from 'svelte/animate'
+  import { applyAppearance, type Appearance } from '../lib/theme'
   import type { ModuleUis } from '../modules'
   import './settings.css'
 
@@ -36,6 +37,7 @@
     modules: ModuleInfo[]
     moduleLayout: ModuleLayout
     notchSpeed: NotchSpeed
+    appearance: Appearance
     configDir: string
   }
 
@@ -57,6 +59,12 @@
     { id: 'display', label: 'Affichage' },
     { id: 'modules', label: 'Modules' },
     { id: 'about', label: 'À propos' },
+  ]
+
+  const appearanceChoices: { value: Appearance; label: string }[] = [
+    { value: 'system', label: 'Système' },
+    { value: 'light', label: 'Clair' },
+    { value: 'dark', label: 'Sombre' },
   ]
 
   const speedChoices: { value: NotchSpeed; label: string }[] = [
@@ -99,6 +107,9 @@
   ]
 
   let settings = $state<Settings | null>(null)
+  $effect(() => {
+    if (settings) applyAppearance(settings.appearance)
+  })
   let version = $state('')
   let error = $state<string | null>(null)
   let page = $state<Page>('general')
@@ -349,6 +360,31 @@
         <h1>Affichage</h1>
         <section>
           <div class="stack">
+            <div>
+              <div class="label">Apparence</div>
+              <div class="hint">
+                Notch et paramètres clairs ou sombres. Système suit le mode choisi dans Windows.
+              </div>
+            </div>
+            <div
+              class="segmented"
+              style:grid-template-columns="repeat(3, 1fr)"
+              role="radiogroup"
+              aria-label="Apparence"
+            >
+              {#each appearanceChoices as choice (choice.value)}
+                <button
+                  role="radio"
+                  aria-checked={settings.appearance === choice.value}
+                  class:selected={settings.appearance === choice.value}
+                  onclick={() => run('set_appearance', { appearance: choice.value })}
+                >
+                  {choice.label}
+                </button>
+              {/each}
+            </div>
+          </div>
+          <div class="stack separated">
             <div>
               <div class="label">Forme</div>
               <div class="hint">

@@ -262,6 +262,8 @@
     overflow: hidden;
     padding: 0 16px;
     background: var(--notch-bg);
+    outline: 1px solid var(--notch-border);
+    outline-offset: -1px;
     transition:
       width var(--duration) ease,
       height var(--duration) ease,
@@ -306,7 +308,7 @@
 
   .notch.movable {
     cursor: grab;
-    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.35);
+    box-shadow: inset 0 0 0 1px var(--notch-outline);
   }
 
   .notch.movable:active {
@@ -338,7 +340,7 @@
     height: 4px;
     overflow: hidden;
     border-radius: 2px;
-    background: rgb(255 255 255 / 0.2);
+    background: var(--notch-track);
   }
 
   .meter > span {

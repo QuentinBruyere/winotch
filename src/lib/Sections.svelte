@@ -148,7 +148,7 @@
   .section + .section {
     margin-top: 6px;
     padding-top: 8px;
-    border-top: 1px solid rgb(255 255 255 / 0.12);
+    border-top: 1px solid var(--notch-line);
   }
 
   .rows {
@@ -199,7 +199,7 @@
     background: linear-gradient(
       to right,
       var(--notch-fg) var(--fill),
-      rgb(255 255 255 / 0.2) var(--fill)
+      var(--notch-track) var(--fill)
     );
     cursor: pointer;
     outline: none;
@@ -232,7 +232,7 @@
     min-width: 20px;
     height: 20px;
     border-radius: 6px;
-    background: rgb(255 255 255 / 0.12);
+    background: var(--notch-button);
     color: var(--notch-fg);
     cursor: pointer;
     transition: background-color 150ms ease;
@@ -244,6 +244,6 @@
   }
 
   .action:hover {
-    background: rgb(255 255 255 / 0.25);
+    background: var(--notch-button-hover);
   }
 </style>
