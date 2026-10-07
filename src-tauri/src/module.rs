@@ -117,6 +117,17 @@ pub struct Item {
     /// Rings (e.g. a timer whose time is up): an alarm repeats and the shape
     /// showing it pulses until the user acknowledges it.
     pub ringing: bool,
+    /// What the compact views (closed notch, pin) write instead of the label
+    /// and title, e.g. only the time when the open notch shows the date too.
+    pub compact: Option<Compact>,
+}
+
+/// An item's texts in the compact views (`Item::compact`).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Compact {
+    pub label: String,
+    /// Shown fainter after the label; may be empty.
+    pub title: String,
 }
 
 /// A feature shown in the notch. Modules are compiled in and handed to

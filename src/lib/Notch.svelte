@@ -82,6 +82,7 @@
   const ShownIcon = $derived(
     top?.icon ? icons[top.icon] : shown ? iconOf(shown.module) : null,
   )
+  const compactTitle = $derived(top ? (top.compact ? top.compact.title : top.title) : '')
   const quiet = $derived(!!top?.quiet && shown?.module !== spotlight)
 
   function iconOf(module: string) {
@@ -206,9 +207,9 @@
                 <span style:width="{sliderPercent(top.slider)}%"></span>
               </span>
             {/if}
-            <span class="label">{top.label}</span>
+            <span class="label">{top.compact?.label ?? top.label}</span>
           {/if}
-          {#if top.title}<span class="muted">{top.title}</span>{/if}
+          {#if compactTitle}<span class="muted">{compactTitle}</span>{/if}
         </span>
       {/if}
     </div>

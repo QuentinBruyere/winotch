@@ -55,6 +55,9 @@ export interface Item {
   icon: Icon | null
   // Rings (a timer whose time is up): an alarm repeats and its shape pulses.
   ringing: boolean
+  // The texts of the compact views (closed notch, pin), if not the label
+  // and title (the clock's own choice).
+  compact: { label: string; title: string } | null
 }
 
 // Mirrors `Section` in src-tauri/src/module.rs: one module's part of the notch.

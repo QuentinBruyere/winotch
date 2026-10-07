@@ -7,6 +7,7 @@
   type DateStyle = 'long' | 'short' | 'numeric'
   interface Data {
     show: Show
+    compact: Show
     hour12: boolean
     seconds: boolean
     dateStyle: DateStyle
@@ -31,8 +32,9 @@
     { value: 'numeric', key: 'clock.example.numeric' },
   ]
 
-  const showsTime = $derived(data.show !== 'date')
-  const showsDate = $derived(data.show !== 'time')
+  // Formats only matter if one of the views shows them.
+  const showsTime = $derived(data.show !== 'date' || data.compact !== 'date')
+  const showsDate = $derived(data.show !== 'time' || data.compact !== 'time')
 
   // The module takes its whole settings object at once.
   function update(change: Partial<Data>) {
@@ -49,6 +51,25 @@
         aria-checked={data.show === choice.value}
         class:selected={data.show === choice.value}
         onclick={() => update({ show: choice.value })}
+      >
+        {t(choice.key)}
+      </button>
+    {/each}
+  </div>
+</div>
+
+<div class="stack separated">
+  <div>
+    <div class="label">{t('clock.compact')}</div>
+    <div class="hint">{t('clock.compact_hint')}</div>
+  </div>
+  <div class="segmented" style:grid-template-columns="repeat(3, 1fr)" role="radiogroup" aria-label={t('clock.compact')}>
+    {#each showChoices as choice (choice.value)}
+      <button
+        role="radio"
+        aria-checked={data.compact === choice.value}
+        class:selected={data.compact === choice.value}
+        onclick={() => update({ compact: choice.value })}
       >
         {t(choice.key)}
       </button>

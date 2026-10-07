@@ -11,7 +11,7 @@ use std::time::Duration;
 use chrono::{Local, Timelike};
 use serde_json::Value;
 
-use crate::module::{Host, Item, Module};
+use crate::module::{Compact, Host, Item, Module};
 use format::Settings;
 
 /// Longest wait between two checks of the clock: a sleeping computer may
@@ -71,16 +71,20 @@ impl Module for Clock {
             return Vec::new();
         }
         let settings = self.inner.settings.lock().unwrap().clone();
-        let (label, title) = format::format(
-            Local::now().naive_local(),
-            &settings,
-            &format::Words::of(crate::i18n::language()),
-        );
+        let now = Local::now().naive_local();
+        let words = format::Words::of(crate::i18n::language());
+        let (label, title) = format::format(now, &settings, &words);
+        let (compact_label, compact_title) =
+            format::format_as(now, settings.compact, &settings, &words);
         vec![Item {
             id: "now".into(),
             title,
             label,
             detail: None,
+            compact: Some(Compact {
+                label: compact_label,
+                title: compact_title,
+            }),
             ..Item::default()
         }]
     }

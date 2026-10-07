@@ -26,14 +26,30 @@ pub enum DateStyle {
     Numeric,
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Settings {
+    /// In the open notch.
     pub show: Show,
+    /// In the closed notch and the pin (DF-0016).
+    pub compact: Show,
     /// "2:32 PM" instead of "14:32".
     pub hour12: bool,
     pub seconds: bool,
     pub date_style: DateStyle,
+}
+
+impl Default for Settings {
+    fn default() -> Self {
+        Self {
+            show: Show::TimeAndDate,
+            // The compact views stay short: the time only.
+            compact: Show::Time,
+            hour12: false,
+            seconds: false,
+            date_style: DateStyle::default(),
+        }
+    }
 }
 
 /// How dates are written in a language: the patterns come from the
@@ -69,9 +85,19 @@ impl Words {
 
 /// The item's label (main text) and title (secondary text, may be empty).
 pub fn format(now: NaiveDateTime, settings: &Settings, words: &Words) -> (String, String) {
+    format_as(now, settings.show, settings, words)
+}
+
+/// Like `format`, showing `show` instead of the open notch's choice.
+pub fn format_as(
+    now: NaiveDateTime,
+    show: Show,
+    settings: &Settings,
+    words: &Words,
+) -> (String, String) {
     let time = time(now, settings);
     let date = date(now, settings.date_style, words);
-    match settings.show {
+    match show {
         Show::TimeAndDate => (time, date),
         Show::Time => (time, String::new()),
         Show::Date => (date, String::new()),
@@ -229,5 +255,20 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn the_compact_views_have_their_own_choice() {
+        let now = at(2026, 10, 5, 14, 32, 0);
+        let settings = Settings::default();
+        let fr = Words::of("fr");
+        assert_eq!(
+            format_as(now, settings.compact, &settings, &fr),
+            pair("14:32", "")
+        );
+        assert_eq!(
+            format_as(now, Show::Date, &settings, &fr),
+            pair("lundi 5 octobre", "")
+        );
     }
 }

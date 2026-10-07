@@ -109,7 +109,8 @@
       {#if top.quiet && !spotlit}
         <span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>
       {:else}
-        <span class="label">{top.label}</span>
+        <span class="label">{top.compact?.label ?? top.label}</span>
+        {#if top.compact?.title}<span class="muted">{top.compact.title}</span>{/if}
       {/if}
     </span>
   {/if}
