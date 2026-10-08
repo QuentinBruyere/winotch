@@ -2,10 +2,11 @@
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import type { ModuleUis } from '../modules'
   import Cover from './Cover.svelte'
+  import Dot from './Dot.svelte'
   import Marquee from './Marquee.svelte'
   import Sections from './Sections.svelte'
   import { icons } from './icons'
-  import { mostUrgent, ringing, toneColor, type Rect, type Section } from './content'
+  import { mostUrgent, ringing, type Rect, type Section } from './content'
 
   // Space on each side of the closed pin's summary, part of `measured`.
   const PIN_PADDING = 12
@@ -46,10 +47,11 @@
     onenter: () => void
     onleave: () => void
     // A click on the pin: its module is acknowledged.
-    onclick: () => void
+    // A click on the pin, on one of its items (open) if the click was on one.
+    onclick: (item?: string) => void
     onaction: (itemId: string, actionId: string) => void
     // Right click on the pin (its module's id).
-    onmenu: (module: string) => void
+    onmenu: (module: string, item?: string) => void
   } = $props()
 
   const top = $derived(mostUrgent(section.items))
@@ -87,7 +89,8 @@
   style:padding={vertical && !open ? '0' : `0 ${open ? 16 : PIN_PADDING}px`}
   onmouseenter={onenter}
   onmouseleave={onleave}
-  {onclick}
+  onclick={(e) =>
+    onclick((e.target as Element).closest<HTMLElement>('[data-item]')?.dataset.item)}
   onkeydown={(e) => e.key === 'Enter' && onclick()}
   oncontextmenu={(e) => {
     e.preventDefault()
@@ -100,11 +103,7 @@
     {#if dotted.length > 0}
       <span class="dots column">
         {#each dotted as item (item.id)}
-          <span
-            class="dot"
-            class:pulse={item.tone === 'active'}
-            style:background={toneColor(item.tone)}
-          ></span>
+          <Dot {item} compact />
         {/each}
       </span>
     {:else}
@@ -115,11 +114,7 @@
       {#if dotted.length > 0}
         <span class="dots">
           {#each dotted as item (item.id)}
-            <span
-              class="dot"
-              class:pulse={item.tone === 'active'}
-              style:background={toneColor(item.tone)}
-            ></span>
+            <Dot {item} compact />
           {/each}
         </span>
       {/if}

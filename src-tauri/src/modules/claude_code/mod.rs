@@ -5,6 +5,7 @@ mod hooks;
 mod server;
 mod sessions;
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -15,10 +16,17 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::module::{Host, Item, Module, Tone};
+use crate::companion;
+use crate::module::{Host, Item, ItemMenu, MenuChoice, Module, Tone};
 use sessions::{Session, SessionState, SessionStore};
 
 const TOKEN_FILE: &str = "hook-token";
+/// Item menu choices (DF-0020): `companion:<id>`, or the dot; then
+/// `color:<id>`, or the state's color.
+const COMPANION: &str = "companion:";
+const DOT: &str = "dot";
+const COLOR: &str = "color:";
+const STATE_COLOR: &str = "state-color";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
@@ -30,6 +38,12 @@ struct Settings {
     /// The hooks were removed when the module was disabled: put them back
     /// when it is enabled again.
     reconnect: bool,
+    /// The companion drawn instead of the dot, by project folder (DF-0020).
+    companions: BTreeMap<String, String>,
+    /// How big the companions are drawn.
+    companion_size: companion::Size,
+    /// The companion's own color, by project folder (DF-0020).
+    companion_colors: BTreeMap<String, String>,
 }
 
 impl Default for Settings {
@@ -38,6 +52,9 @@ impl Default for Settings {
             server_port: 47821,
             session_timeout_minutes: 180,
             reconnect: false,
+            companions: BTreeMap::new(),
+            companion_size: companion::Size::default(),
+            companion_colors: BTreeMap::new(),
         }
     }
 }
@@ -140,13 +157,14 @@ impl Module for ClaudeCode {
         if !self.inner.running.load(Ordering::Relaxed) {
             return Vec::new();
         }
+        let settings = self.inner.settings.lock().unwrap().clone();
         self.inner
             .sessions
             .lock()
             .unwrap()
             .list()
             .iter()
-            .map(item)
+            .map(|session| item(session, &settings))
             .collect()
     }
 
@@ -168,6 +186,65 @@ impl Module for ClaudeCode {
         }
     }
 
+    /// Only the clicked session: the others keep their result.
+    fn acknowledge_item(&self, item: &str) {
+        let changed = self.inner.sessions.lock().unwrap().acknowledge_one(item);
+        if changed && let Some(host) = self.inner.host.get() {
+            host.refresh();
+        }
+    }
+
+    /// The session's companion and its color, chosen for its whole project
+    /// (DF-0020).
+    fn item_menu(&self, item: &str) -> Vec<ItemMenu> {
+        let Some(cwd) = self.inner.session_cwd(item) else {
+            return Vec::new();
+        };
+        let settings = self.inner.settings.lock().unwrap().clone();
+        let current = settings.companions.get(&cwd);
+        let mut menus = vec![companion_menu(current.map(String::as_str))];
+        if current.is_some() {
+            let color = settings.companion_colors.get(&cwd);
+            menus.push(color_menu(color.map(String::as_str)));
+        }
+        menus
+    }
+
+    fn item_action(&self, item: &str, action: &str) {
+        let inner = &self.inner;
+        let Some(cwd) = inner.session_cwd(item) else {
+            return;
+        };
+        if let Some(id) = action.strip_prefix(COMPANION) {
+            if !companion::BUILT_IN.contains(&id) {
+                return;
+            }
+            inner.update_settings(|s| {
+                s.companions.insert(cwd, id.to_owned());
+            });
+        } else if action == DOT {
+            inner.update_settings(|s| {
+                s.companions.remove(&cwd);
+            });
+        } else if let Some(id) = action.strip_prefix(COLOR) {
+            if !companion::COLORS.contains(&id) {
+                return;
+            }
+            inner.update_settings(|s| {
+                s.companion_colors.insert(cwd, id.to_owned());
+            });
+        } else if action == STATE_COLOR {
+            inner.update_settings(|s| {
+                s.companion_colors.remove(&cwd);
+            });
+        } else {
+            return;
+        }
+        if let Some(host) = inner.host.get() {
+            host.refresh();
+        }
+    }
+
     fn settings(&self) -> Value {
         let inner = &self.inner;
         let settings = inner.settings.lock().unwrap().clone();
@@ -177,6 +254,7 @@ impl Module for ClaudeCode {
             "serverPort": settings.server_port,
             "serverError": inner.server_error.lock().unwrap().clone(),
             "sessionTimeoutMinutes": settings.session_timeout_minutes,
+            "companionSize": settings.companion_size,
         })
     }
 
@@ -205,6 +283,12 @@ impl Module for ClaudeCode {
                 inner.update_settings(|s| s.session_timeout_minutes = minutes);
                 Ok(())
             }
+            "set_companion_size" => {
+                let size = serde_json::from_value(args["size"].clone())
+                    .map_err(|_| crate::t!("claude-code.missing_size"))?;
+                inner.update_settings(|s| s.companion_size = size);
+                Ok(())
+            }
             _ => return Err(format!("unknown action {action}")),
         };
         if let Some(host) = inner.host.get() {
@@ -225,6 +309,11 @@ impl Inner {
                 host.refresh();
             }
         })
+    }
+
+    /// The project folder of a session, if Claude Code told it.
+    fn session_cwd(&self, id: &str) -> Option<String> {
+        self.sessions.lock().unwrap().get(id)?.cwd.clone()
     }
 
     fn hooks_installed(&self) -> bool {
@@ -296,7 +385,43 @@ impl Inner {
     }
 }
 
-fn item(session: &Session) -> Item {
+/// The companion submenu: the dot, then each companion; `current` ticked.
+fn companion_menu(current: Option<&str>) -> ItemMenu {
+    let mut choices = vec![MenuChoice {
+        id: DOT.into(),
+        label: crate::t!("claude-code.menu.dot"),
+        checked: current.is_none(),
+    }];
+    choices.extend(companion::BUILT_IN.iter().map(|id| MenuChoice {
+        id: format!("{COMPANION}{id}"),
+        label: companion::name(id),
+        checked: current == Some(*id),
+    }));
+    ItemMenu {
+        title: crate::t!("claude-code.menu.companion"),
+        choices,
+    }
+}
+
+/// The color submenu: the state's color, then the palette; `current` ticked.
+fn color_menu(current: Option<&str>) -> ItemMenu {
+    let mut choices = vec![MenuChoice {
+        id: STATE_COLOR.into(),
+        label: crate::t!("claude-code.menu.default_color"),
+        checked: current.is_none(),
+    }];
+    choices.extend(companion::COLORS.iter().map(|id| MenuChoice {
+        id: format!("{COLOR}{id}"),
+        label: companion::color_name(id),
+        checked: current == Some(*id),
+    }));
+    ItemMenu {
+        title: crate::t!("claude-code.menu.color"),
+        choices,
+    }
+}
+
+fn item(session: &Session, settings: &Settings) -> Item {
     use SessionState::*;
     let (key, tone) = match session.state {
         Idle => ("claude-code.state.idle", Tone::Neutral),
@@ -314,6 +439,21 @@ fn item(session: &Session) -> Item {
         detail: session.tool.clone(),
         tone,
         dot: true,
+        companion: session
+            .cwd
+            .as_ref()
+            .and_then(|cwd| settings.companions.get(cwd))
+            .map(|id| companion::Choice {
+                id: id.clone(),
+                size: settings.companion_size,
+                color: session
+                    .cwd
+                    .as_ref()
+                    .and_then(|cwd| settings.companion_colors.get(cwd))
+                    // A color dropped from the palette: the state's again.
+                    .filter(|color| companion::COLORS.contains(&color.as_str()))
+                    .cloned(),
+            }),
         ..Item::default()
     }
 }
@@ -374,5 +514,62 @@ mod tests {
         assert_eq!(project_name(Some("/home/me/app")), "app");
         assert_eq!(project_name(None), "session");
         assert_eq!(project_name(Some("/")), "session");
+    }
+
+    fn session(cwd: Option<&str>) -> Session {
+        let event: sessions::HookEvent = serde_json::from_value(json!({
+            "session_id": "s1",
+            "hook_event_name": "UserPromptSubmit",
+            "cwd": cwd,
+        }))
+        .unwrap();
+        let mut store = SessionStore::default();
+        store.apply(&event, Instant::now());
+        store.list().remove(0)
+    }
+
+    #[test]
+    fn a_project_s_companion_replaces_the_dot_of_its_sessions() {
+        let settings = Settings {
+            companions: BTreeMap::from([("/work/app".to_owned(), "bloop".to_owned())]),
+            companion_size: companion::Size::Large,
+            companion_colors: BTreeMap::from([("/work/app".to_owned(), "pink".to_owned())]),
+            ..Settings::default()
+        };
+        let item_of = |cwd| item(&session(cwd), &settings).companion;
+        assert_eq!(
+            item_of(Some("/work/app")),
+            Some(companion::Choice {
+                id: "bloop".into(),
+                size: companion::Size::Large,
+                color: Some("pink".into()),
+            })
+        );
+        assert_eq!(item_of(Some("/work/other")), None);
+        assert_eq!(item_of(None), None);
+    }
+
+    #[test]
+    fn the_companion_menu_ticks_the_current_choice() {
+        let ticked = |current| {
+            companion_menu(current)
+                .choices
+                .into_iter()
+                .filter(|c| c.checked)
+                .map(|c| c.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ticked(None), [DOT]);
+        assert_eq!(ticked(Some("bloop")), ["companion:bloop"]);
+        let ticked_color = |current| {
+            color_menu(current)
+                .choices
+                .into_iter()
+                .filter(|c| c.checked)
+                .map(|c| c.id)
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(ticked_color(None), [STATE_COLOR]);
+        assert_eq!(ticked_color(Some("teal")), ["color:teal"]);
     }
 }

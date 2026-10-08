@@ -478,14 +478,17 @@
   }
 
   // A click on a module acknowledges it alone (a finished Claude Code
-  // session stays until its own part is clicked).
-  function acknowledge(module: string | null) {
-    if (module !== null && !status.movable) void invoke('acknowledge', { module })
+  // session stays until its own part is clicked), or only the clicked item.
+  function acknowledge(module: string | null, item?: string) {
+    if (module !== null && !status.movable) {
+      void invoke('acknowledge', { module, item: item ?? null })
+    }
   }
 
-  // Right click on a module: pin or unpin it (a native menu, context_menu.rs).
-  function moduleMenu(module: string) {
-    if (!status.movable) void invoke('module_menu', { module })
+  // Right click on a module: pin or unpin it, plus the clicked item's own
+  // choices (a native menu, context_menu.rs).
+  function moduleMenu(module: string, item?: string) {
+    if (!status.movable) void invoke('module_menu', { module, item: item ?? null })
   }
 
   let alertTimer: ReturnType<typeof setTimeout> | undefined
@@ -682,7 +685,7 @@
       bind:measured={pinWidths[pin.section.module]}
       onenter={() => enterPin(pin.section.module)}
       onleave={() => leavePin(pin.section.module)}
-      onclick={() => acknowledge(pin.section.module)}
+      onclick={(item) => acknowledge(pin.section.module, item)}
       onaction={(item, action) => void invoke('item_action', { item, action })}
       onmenu={moduleMenu}
     />

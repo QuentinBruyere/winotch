@@ -111,6 +111,9 @@ pub struct Item {
     /// Shows a dot in the tone's colour (e.g. a session's state). Items that
     /// only display information, like the time, go without.
     pub dot: bool,
+    /// Draws this companion instead of the dot (DF-0020): a little animated
+    /// creature, in the tone's colour, whose animation follows the tone.
+    pub companion: Option<crate::companion::Choice>,
     /// Buttons shown in the open notch, in order.
     pub actions: Vec<Action>,
     /// A slider shown in the open notch, between the title and the label.
@@ -163,6 +166,25 @@ pub struct Compact {
     pub title: String,
 }
 
+/// Choices a module adds to the right-click menu of one of its items, as a
+/// submenu (e.g. a session's companion, DF-0020).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ItemMenu {
+    /// The submenu's name.
+    pub title: String,
+    pub choices: Vec<MenuChoice>,
+}
+
+/// One choice of an `ItemMenu`: picking it calls `Module::item_action` with
+/// its id.
+#[derive(Debug, Clone, PartialEq)]
+pub struct MenuChoice {
+    pub id: String,
+    pub label: String,
+    /// The current choice, shown ticked.
+    pub checked: bool,
+}
+
 /// A feature shown in the notch. Modules are compiled in and handed to
 /// `crate::run`; only enabled modules are started.
 pub trait Module: Send + Sync + 'static {
@@ -197,8 +219,18 @@ pub trait Module: Send + Sync + 'static {
     }
     /// The user clicked the notch: they have seen what it shows.
     fn acknowledge(&self) {}
+    /// The user clicked one item in the open notch: they have seen it. By
+    /// default, the whole module is acknowledged.
+    fn acknowledge_item(&self, _item: &str) {
+        self.acknowledge()
+    }
     /// The user clicked one of an item's buttons (`Item::actions`).
     fn item_action(&self, _item: &str, _action: &str) {}
+    /// Submenus of choices for the right-click menu of an item, above the
+    /// module's own entries (pin, unpin); none by default.
+    fn item_menu(&self, _item: &str) -> Vec<ItemMenu> {
+        Vec::new()
+    }
     /// Data for the module's section of the settings window.
     fn settings(&self) -> Value {
         Value::Null

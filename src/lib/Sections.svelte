@@ -2,7 +2,9 @@
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import type { ModuleUis } from '../modules'
   import Cover from './Cover.svelte'
-  import { sliderPercent, toneColor, type Item, type Section } from './content'
+  import Dot from './Dot.svelte'
+  import { rowWidth } from './companions'
+  import { sliderPercent, type Item, type Section } from './content'
   import { filled, icons } from './icons'
 
   // The modules shown in an open card or pin, one part each, its icon first
@@ -25,11 +27,19 @@
     moduleUis: ModuleUis
     // A button of an item: `itemId` is `<module id>:<item id>`.
     onaction: (itemId: string, actionId: string) => void
-    // Right click on a module's part (its id).
-    onmenu?: (module: string) => void
-    // A click on a module's part (its id): it acknowledges that module.
-    onpick?: (module: string) => void
+    // Right click on a module's part (its id), on one of its items (its
+    // `<module id>:<item id>`) if the click was on one.
+    onmenu?: (module: string, item?: string) => void
+    // A click on a module's part (its id): it acknowledges that module, or
+    // only the clicked item (its `<module id>:<item id>`) if the click was on
+    // one.
+    onpick?: (module: string, item?: string) => void
   } = $props()
+
+  // The item under a click: `<module id>:<item id>`, if it was on one.
+  function itemAt(e: MouseEvent) {
+    return (e.target as Element).closest<HTMLElement>('[data-item]')?.dataset.item
+  }
 
   function iconOf(module: string) {
     return moduleUis[module]?.icon ?? Puzzle
@@ -106,6 +116,8 @@
   {#each list as section (section.module)}
     {@const Icon = iconOf(section.module)}
     {@const dottedRows = section.items.some((i) => i.dot)}
+    <!-- With a companion in the module, every dot gets its width (DF-0020). -->
+    {@const companionSize = section.items.find((i) => i.companion)?.companion?.size}
     <!-- A featured item (media player) carries its own picture: no icon. -->
     {@const featured = section.items.some((i) => i.layout === 'featured')}
     <!-- The notch window never takes the keyboard focus (see Notch.svelte). -->
@@ -113,13 +125,13 @@
     <div
       class="section"
       role="group"
-      onclick={() => onpick?.(section.module)}
+      onclick={(e) => onpick?.(section.module, itemAt(e))}
       oncontextmenu={(e) => {
         // In a pin, the pin itself shows the menu.
         if (!onmenu) return
         e.preventDefault()
         e.stopPropagation()
-        onmenu(section.module)
+        onmenu(section.module, itemAt(e))
       }}
     >
       {#if !featured}<span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>{/if}
@@ -127,7 +139,7 @@
         {#each section.items as item (item.id)}
           {#if item.layout === 'featured'}
             <!-- A media player: the picture, then everything stacked. -->
-            <li class="featured" class:dimmed={item.dimmed}>
+            <li class="featured" class:dimmed={item.dimmed} data-item={item.id}>
               <Cover src={item.image ?? ''} icon={Icon} />
               <div class="stack">
                 {#if item.title}<span class="title">{item.title}</span>{/if}
@@ -142,17 +154,22 @@
               </div>
             </li>
           {:else}
-            <li class="row" class:dimmed={item.dimmed}>
+            <!-- An item with a state (a session) can be picked alone: its
+                 row lights up under the cursor. -->
+            <li class="row" class:dimmed={item.dimmed} class:pickable={item.dot} data-item={item.id}>
               {#if item.image !== null}<Cover src={item.image} icon={Icon} />{/if}
-              {#if item.dot}
+              {#if item.dot || dottedRows}
                 <span
-                  class="dot"
-                  class:pulse={item.tone === 'active'}
-                  style:background={toneColor(item.tone)}
-                ></span>
-              {:else if dottedRows}
-                <!-- Keeps the texts aligned with the dotted rows. -->
-                <span class="dot blank"></span>
+                  class="mark"
+                  style:width={companionSize ? `${rowWidth(companionSize)}px` : null}
+                >
+                  {#if item.dot}
+                    <Dot {item} />
+                  {:else}
+                    <!-- Keeps the texts aligned with the dotted rows. -->
+                    <span class="dot blank"></span>
+                  {/if}
+                </span>
               {/if}
               {#if item.title}<span class="title">{item.title}</span>{/if}
               {#if item.slider}{@render slider(item)}{/if}
@@ -179,11 +196,14 @@
 <style>
   /* Fills the open card and centers its rows: a vertical notch never gets
      shorter than its compact shape, which leaves room around a short list.
-     Past the window height it scrolls ("safe": the top stays reachable). */
+     Past the window height it scrolls ("safe": the top stays reachable).
+     Scrolling clips the sides too: it reaches 8 px into the card's padding,
+     so a picked row's background is not cut. */
   .list {
     box-sizing: border-box;
     height: 100%;
-    padding: 8px 0 10px;
+    margin-inline: -8px;
+    padding: 8px 8px 10px;
     display: grid;
     align-content: safe center;
     gap: 2px;
@@ -221,6 +241,26 @@
     gap: 8px;
     min-width: 0;
     height: 24px;
+  }
+
+  /* The background reaches a little past the row's texts: 8 px on the
+     right, 3 px on the left, so it keeps clear of the module's icon. */
+  .row.pickable {
+    margin-inline: -3px -8px;
+    padding-inline: 3px 8px;
+    border-radius: 6px;
+    transition: background-color 150ms ease;
+  }
+
+  .row.pickable:hover {
+    background: var(--notch-button);
+  }
+
+  /* The dot or companion before the texts, centered in its place. */
+  .mark {
+    display: flex;
+    justify-content: center;
+    flex-shrink: 0;
   }
 
   .centered .row {

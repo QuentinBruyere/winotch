@@ -34,6 +34,7 @@ pub struct HookEvent {
 #[serde(rename_all = "camelCase")]
 pub struct Session {
     pub id: String,
+    /// The project folder: the first one Claude Code reported.
     pub cwd: Option<String>,
     pub state: SessionState,
     pub tool: Option<String>,
@@ -107,7 +108,10 @@ impl SessionStore {
                 let before = (session.state, session.tool.clone(), session.cwd.clone());
                 session.state = state;
                 session.tool = tool;
-                if event.cwd.is_some() {
+                // The project: the first folder known. Claude Code reports the
+                // current folder, which moves when a command changes it, and the
+                // project (its name, its companion) must not follow.
+                if session.cwd.is_none() {
                     session.cwd = event.cwd.clone();
                 }
                 session.last_seen = now;
@@ -128,12 +132,28 @@ impl SessionStore {
         changed
     }
 
+    /// The user has seen one session's result: back to `idle` if `done` or
+    /// `error`.
+    pub fn acknowledge_one(&mut self, id: &str) -> bool {
+        match self.sessions.get_mut(id) {
+            Some(s) if matches!(s.state, SessionState::Done | SessionState::Error) => {
+                s.state = SessionState::Idle;
+                true
+            }
+            _ => false,
+        }
+    }
+
     /// Drops sessions that sent nothing for `timeout` (terminal killed without `SessionEnd`).
     pub fn prune(&mut self, now: Instant, timeout: Duration) -> bool {
         let before = self.sessions.len();
         self.sessions
             .retain(|_, s| now.saturating_duration_since(s.last_seen) < timeout);
         before != self.sessions.len()
+    }
+
+    pub fn get(&self, id: &str) -> Option<&Session> {
+        self.sessions.get(id)
     }
 
     pub fn list(&self) -> Vec<Session> {
@@ -195,6 +215,31 @@ mod tests {
         assert!(store.apply(&event("PreToolUse"), Instant::now()));
         assert_eq!(state(&store), SessionState::Working);
         assert_eq!(store.list()[0].cwd.as_deref(), Some("/work/project"));
+    }
+
+    #[test]
+    fn the_project_folder_does_not_follow_folder_changes() {
+        let mut store = SessionStore::default();
+        let now = Instant::now();
+        store.apply(&event("SessionStart"), now);
+        let mut moved = event("PreToolUse");
+        moved.cwd = Some("/work/project/src".into());
+        store.apply(&moved, now);
+        assert_eq!(store.list()[0].cwd.as_deref(), Some("/work/project"));
+    }
+
+    #[test]
+    fn acknowledging_one_session_leaves_the_others_done() {
+        let mut store = SessionStore::default();
+        let now = Instant::now();
+        let mut other = event("Stop");
+        other.session_id = "s2".into();
+        store.apply(&event("Stop"), now);
+        store.apply(&other, now);
+        assert!(store.acknowledge_one("s1"));
+        assert_eq!(store.get("s1").unwrap().state, SessionState::Idle);
+        assert_eq!(store.get("s2").unwrap().state, SessionState::Done);
+        assert!(!store.acknowledge_one("s1"));
     }
 
     #[test]

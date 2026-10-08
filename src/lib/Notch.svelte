@@ -4,6 +4,7 @@
   import { fade } from 'svelte/transition'
   import type { ModuleUis } from '../modules'
   import Cover from './Cover.svelte'
+  import Dot from './Dot.svelte'
   import Marquee from './Marquee.svelte'
   import Sections from './Sections.svelte'
   import { icons } from './icons'
@@ -13,7 +14,6 @@
     mostUrgent,
     ringing,
     sliderPercent,
-    toneColor,
     type Card,
     type Edge,
     type Section,
@@ -70,7 +70,8 @@
     expanded: boolean
     movable: boolean
     // A click on a module (its id); null outside any module.
-    onclick: (module: string | null) => void
+    // A click on a module, on one of its items if the click was on one.
+    onclick: (module: string | null, item?: string) => void
     // A button of an item: `itemId` is `<module id>:<item id>`.
     onaction: (itemId: string, actionId: string) => void
     onenter: () => void
@@ -79,7 +80,7 @@
     onpointermove: () => void
     onpointerup: () => void
     // Right click on a module (its id).
-    onmenu: (module: string) => void
+    onmenu: (module: string, item?: string) => void
   } = $props()
 
   // The compact notch shows a single module (DF-0011). Only some items have
@@ -192,11 +193,7 @@
         {#if dotted.length > 0}
           <span class="dots column">
             {#each dotted as item (item.id)}
-              <span
-                class="dot"
-                class:pulse={item.tone === 'active'}
-                style:background={toneColor(item.tone)}
-              ></span>
+              <Dot {item} compact />
             {/each}
           </span>
         {:else if ShownIcon}
@@ -207,11 +204,7 @@
           {#if dotted.length > 0}
             <span class="dots">
               {#each dotted as item (item.id)}
-                <span
-                  class="dot"
-                  class:pulse={item.tone === 'active'}
-                  style:background={toneColor(item.tone)}
-                ></span>
+                <Dot {item} compact />
               {/each}
             </span>
           {/if}

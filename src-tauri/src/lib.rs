@@ -1,3 +1,4 @@
+pub mod companion;
 mod config;
 mod context_menu;
 pub mod i18n;
@@ -72,16 +73,26 @@ fn get_status(state: tauri::State<AppState>) -> Status {
     status(&state)
 }
 
-/// Clicking the notch means the user has seen what it shows.
+/// Clicking the notch means the user has seen what it shows: one of a
+/// module's items (`<module id>:<item id>`) if the click was on it, else the
+/// whole module.
 #[tauri::command]
-fn acknowledge(state: tauri::State<AppState>, module: String) {
+fn acknowledge(state: tauri::State<AppState>, module: String, item: Option<String>) {
     let config = state.config.lock().unwrap().clone();
+    let item = item
+        .as_deref()
+        .and_then(|item| item.split_once(':'))
+        .filter(|(owner, _)| *owner == module)
+        .map(|(_, id)| id);
     for m in state
         .modules
         .iter()
         .filter(|m| m.id() == module && module::is_enabled(m.as_ref(), &config))
     {
-        m.acknowledge();
+        match item {
+            Some(item) => m.acknowledge_item(item),
+            None => m.acknowledge(),
+        }
     }
 }
 

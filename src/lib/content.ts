@@ -50,6 +50,10 @@ export interface Item {
   tone: Tone
   // Shows a dot in the tone's colour; text-only items (the time) have none.
   dot: boolean
+  // Drawn instead of the dot (DF-0020): a companion, see lib/companions.
+  // `color`: worn while working, darker at rest (`--companion-<color>` in
+  // app.css); null = always the state's.
+  companion: { id: string; size: CompanionSize; color: string | null } | null
   actions: Action[]
   // A slider in the open notch, between the title and the label.
   slider: Slider | null
@@ -159,6 +163,9 @@ export interface Card {
 }
 
 // Mirrors `NotchSpeed` in src-tauri/src/config.rs
+// Mirrors `CompanionSize` in src-tauri/src/config.rs (DF-0020).
+export type CompanionSize = 'small' | 'medium' | 'large'
+
 export type NotchSpeed = 'slow' | 'normal' | 'fast'
 
 // Length of the opening / closing animation, in ms.

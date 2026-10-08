@@ -26,6 +26,18 @@
   --tone-success: #30d158;
   --tone-error: #ff453a;
 
+  /* Companion colors (DF-0020), worn while working instead of the state's:
+     `companion::COLORS` on the Rust side lists the same names. */
+  --companion-ink: var(--notch-fg);
+  --companion-pink: #ff7eb6;
+  --companion-purple: #b892ff;
+  --companion-sky: #6ccaff;
+  --companion-blue: #3285fb;
+  --companion-teal: #4fdcc8;
+  --companion-emerald: #10a37f;
+  --companion-lemon: #f5e26b;
+  --companion-terracotta: #d97757;
+
   font-family: 'Segoe UI Variable', 'Segoe UI', system-ui, -apple-system, sans-serif;
   font-size: 12px;
   color: var(--notch-fg);
@@ -47,6 +59,15 @@
   --tone-question: #007aff;
   --tone-success: #28a745;
   --tone-error: #e5352b;
+
+  --companion-pink: #d6337a;
+  --companion-purple: #7b4fd6;
+  --companion-sky: #1c8fd6;
+  --companion-blue: #1a66e0;
+  --companion-teal: #0f9e8c;
+  --companion-emerald: #0b8a6b;
+  --companion-lemon: #a88f00;
+  --companion-terracotta: #c96442;
 }
 
 html,
@@ -85,8 +106,10 @@ html[data-window='notch'] {
     background: transparent;
   }
 
+  /* Centered across: a companion (DF-0020) is bigger than a dot. */
   & .dots {
     display: flex;
+    align-items: center;
     gap: 4px;
     flex-shrink: 0;
   }
@@ -94,6 +117,17 @@ html[data-window='notch'] {
   & .dots.column {
     flex-direction: column;
     gap: 6px;
+  }
+
+  /* The thin vertical notch shows only the middle of a companion: the
+     creature, without the room for its scenes on the sides (DF-0020). */
+  & .dots.column .companion {
+    width: var(--size);
+    margin-inline: 0;
+  }
+
+  & .dots.column .companion svg {
+    margin-left: calc(var(--size) * (1 - var(--ratio)) / 2);
   }
 
   & .pulse {
