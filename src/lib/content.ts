@@ -176,6 +176,9 @@ export interface Status {
   appearance: Appearance
   // The language shown (ADR-0012), the system's already resolved.
   language: string
+  // Tucks into the edge when unused, and after how long (DF-0018).
+  autoHide: boolean
+  autoHideDelayMs: number
   // Center of the compact notch along the edge, from the start of the window,
   // in logical pixels; null = the middle of the window (DF-0006)
   anchor: number | null

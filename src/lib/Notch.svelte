@@ -69,7 +69,8 @@
     style: Style
     expanded: boolean
     movable: boolean
-    onclick: () => void
+    // A click on a module (its id); null outside any module.
+    onclick: (module: string | null) => void
     // A button of an item: `itemId` is `<module id>:<item id>`.
     onaction: (itemId: string, actionId: string) => void
     onenter: () => void
@@ -159,6 +160,7 @@
   >
     <!-- Not a <button>: it holds the items' buttons. The window never takes
          the keyboard focus, so there is no keyboard access to provide. -->
+    <!-- svelte-ignore a11y_click_events_have_key_events -->
     <div
       role="button"
       tabindex="-1"
@@ -169,8 +171,7 @@
       style:width="{notch.width}px"
       style:height="{notch.height}px"
       style:border-radius={notchCorners}
-      {onclick}
-      onkeydown={(e) => e.key === 'Enter' && onclick()}
+      onclick={() => !expanded && onclick(shown?.module ?? null)}
       {onpointerdown}
       {onpointermove}
       {onpointerup}
@@ -184,7 +185,7 @@
       {#if notice}
         <span class="row compact"><span class="label">{notice}</span></span>
       {:else if expanded}
-        <Sections list={notch.sections} {note} {moduleUis} {onaction} {onmenu} />
+        <Sections list={notch.sections} {note} {moduleUis} {onaction} {onmenu} onpick={onclick} />
       {:else if vertical}
         <!-- Thin vertical notch: the shown module's dots, else its icon;
              details on hover. -->
@@ -257,10 +258,15 @@
         style:border-radius="{card.radius}px"
         in:unfold={{ delay: Math.round(duration * 0.28) * (i + 1), from: foldedWidth }}
         out:fade={{ duration: Math.round(duration / 2) }}
-        {onclick}
-        onkeydown={(e) => e.key === 'Enter' && onclick()}
       >
-        <Sections list={card.sections} height={card.height} {moduleUis} {onaction} {onmenu} />
+        <Sections
+          list={card.sections}
+          height={card.height}
+          {moduleUis}
+          {onaction}
+          {onmenu}
+          onpick={onclick}
+        />
       </div>
     {/each}
   </div>

@@ -67,6 +67,8 @@ pub struct Settings {
     module_layout: crate::config::ModuleLayout,
     notch_speed: crate::config::NotchSpeed,
     appearance: crate::config::Appearance,
+    auto_hide: bool,
+    auto_hide_delay_ms: u32,
     /// Chosen language code, `None` = the system's (ADR-0012).
     language: Option<String>,
     /// Translated languages: code and own name.
@@ -114,6 +116,8 @@ pub fn current(app: &AppHandle) -> Settings {
         module_layout: config.module_layout,
         notch_speed: config.notch_speed,
         appearance: config.appearance,
+        auto_hide: config.auto_hide,
+        auto_hide_delay_ms: config.auto_hide_delay_ms,
         language: config.language.clone(),
         languages: crate::i18n::LANGUAGES.to_vec(),
         shown_language: crate::i18n::language(),
@@ -399,6 +403,20 @@ pub fn set_appearance(app: AppHandle, appearance: crate::config::Appearance) {
     {
         log::warn!("cannot set the settings window theme: {e}");
     }
+    changed(&app);
+}
+
+/// Tucks the notch into the edge when unused (DF-0018).
+#[tauri::command]
+pub fn set_auto_hide(app: AppHandle, enabled: bool) {
+    update_config(&app, |c| c.auto_hide = enabled);
+    changed(&app);
+}
+
+/// How long after the cursor left before the notch tucks, in ms.
+#[tauri::command]
+pub fn set_auto_hide_delay(app: AppHandle, ms: u32) {
+    update_config(&app, |c| c.auto_hide_delay_ms = ms.min(5000));
     changed(&app);
 }
 

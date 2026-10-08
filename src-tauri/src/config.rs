@@ -43,6 +43,10 @@ pub struct Config {
     pub appearance: Appearance,
     /// Language code (ADR-0012); `None` = the system's.
     pub language: Option<String>,
+    /// Tucks the notch and its pins into the edge when unused (DF-0018).
+    pub auto_hide: bool,
+    /// How long after the cursor left before it tucks, in ms (0 to 5000).
+    pub auto_hide_delay_ms: u32,
 }
 
 /// Light or dark theme of every window (DF-0014).
@@ -125,6 +129,8 @@ impl Default for Config {
             pins: BTreeMap::new(),
             appearance: Appearance::default(),
             language: None,
+            auto_hide: false,
+            auto_hide_delay_ms: 1000,
         }
     }
 }

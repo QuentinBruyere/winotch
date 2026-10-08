@@ -14,6 +14,7 @@
     moduleUis,
     onaction,
     onmenu,
+    onpick,
   }: {
     list: Section[]
     // Shown when the list is empty (no module enabled).
@@ -26,6 +27,8 @@
     onaction: (itemId: string, actionId: string) => void
     // Right click on a module's part (its id).
     onmenu?: (module: string) => void
+    // A click on a module's part (its id): it acknowledges that module.
+    onpick?: (module: string) => void
   } = $props()
 
   function iconOf(module: string) {
@@ -97,9 +100,12 @@
     {@const dottedRows = section.items.some((i) => i.dot)}
     <!-- A featured item (media player) carries its own picture: no icon. -->
     {@const featured = section.items.some((i) => i.layout === 'featured')}
+    <!-- The notch window never takes the keyboard focus (see Notch.svelte). -->
+    <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <div
       class="section"
       role="group"
+      onclick={() => onpick?.(section.module)}
       oncontextmenu={(e) => {
         // In a pin, the pin itself shows the menu.
         if (!onmenu) return

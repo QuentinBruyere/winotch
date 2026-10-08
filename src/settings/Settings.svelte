@@ -39,6 +39,8 @@
     moduleLayout: ModuleLayout
     notchSpeed: NotchSpeed
     appearance: Appearance
+    autoHide: boolean
+    autoHideDelayMs: number
     language: string | null
     languages: [string, string][]
     // The language shown, the system's resolved (ADR-0012).
@@ -93,6 +95,16 @@
   $effect(() => {
     if (settings) gap = settings.gap
   })
+  // Auto-hide delay, in seconds on the slider (DF-0018).
+  const HIDE_DELAY_DEFAULT = 1
+  const HIDE_DELAY_MAX = 5
+  let hideDelay = $state(HIDE_DELAY_DEFAULT)
+  $effect(() => {
+    if (settings) hideDelay = settings.autoHideDelayMs / 1000
+  })
+  function saveHideDelay() {
+    void run('set_auto_hide_delay', { ms: Math.round(hideDelay * 1000) })
+  }
 
   const edgeChoices: { value: Edge; key: Key }[] = [
     { value: 'top', key: 'settings.edge.top' },
@@ -112,6 +124,10 @@
   ]
 
   let settings = $state<Settings | null>(null)
+  // "1.5" or "1,5", as the shown language writes it.
+  const seconds = $derived(
+    new Intl.NumberFormat(settings?.shownLanguage ?? 'en', { maximumFractionDigits: 1 }),
+  )
   $effect(() => {
     if (settings) applyAppearance(settings.appearance)
   })
@@ -381,6 +397,7 @@
       {:else if page === 'display'}
         <h1>{t('settings.page.display')}</h1>
         <section>
+          <h2>{t('settings.group.look')}</h2>
           <div class="stack">
             <div>
               <div class="label">{t('settings.appearance')}</div>
@@ -443,63 +460,10 @@
               />
             </label>
           {/if}
-          <div class="stack separated">
-            <div>
-              <div class="label">{t('settings.speed')}</div>
-              <div class="hint">{t('settings.speed.hint')}</div>
-            </div>
-            <!-- Notched slider, like the cursor resistance one. -->
-            <div class="notched">
-              <input
-                type="range"
-                min="0"
-                max={speedChoices.length - 1}
-                step="1"
-                aria-label={t('settings.speed')}
-                aria-valuetext={t(speedChoices[speedIndex].key)}
-                bind:value={speedIndex}
-                onchange={() => run('set_notch_speed', { speed: speedChoices[speedIndex].value })}
-              />
-              <div class="stops">
-                {#each speedChoices as choice, i (choice.value)}
-                  <button
-                    class:selected={speedIndex === i}
-                    style:left="{(i / (speedChoices.length - 1)) * 100}%"
-                    onclick={() => {
-                      speedIndex = i
-                      void run('set_notch_speed', { speed: choice.value })
-                    }}
-                  >
-                    {t(choice.key)}
-                  </button>
-                {/each}
-              </div>
-            </div>
-          </div>
-          <div class="stack separated">
-            <div>
-              <div class="label">{t('settings.layout')}</div>
-              <div class="hint">{t('settings.layout.hint')}</div>
-            </div>
-            <div
-              class="segmented"
-              style:grid-template-columns="repeat(2, 1fr)"
-              role="radiogroup"
-              aria-label={t('settings.layout')}
-            >
-              {#each layoutChoices as choice (choice.value)}
-                <button
-                  role="radio"
-                  aria-checked={settings.moduleLayout === choice.value}
-                  class:selected={settings.moduleLayout === choice.value}
-                  onclick={() => run('set_module_layout', { layout: choice.value })}
-                >
-                  {t(choice.key)}
-                </button>
-              {/each}
-            </div>
-          </div>
-          <div class="stack separated">
+        </section>
+        <section>
+          <h2>{t('settings.group.position')}</h2>
+          <div class="stack">
             <div>
               <div class="label">{t('settings.edge')}</div>
               <div class="hint">{t('settings.edge.hint')}</div>
@@ -556,6 +520,92 @@
               </select>
             </label>
           {/if}
+        </section>
+        <section>
+          <h2>{t('settings.group.behavior')}</h2>
+          <label class="row">
+            <div>
+              <div class="label">{t('settings.auto_hide')}</div>
+              <div class="hint">{t('settings.auto_hide.hint')}</div>
+            </div>
+            <input
+              type="checkbox"
+              class="switch"
+              checked={settings.autoHide}
+              onchange={(e) => run('set_auto_hide', { enabled: e.currentTarget.checked })}
+            />
+          </label>
+          {#if settings.autoHide}
+            <div class="row">
+              <div>
+                <div class="label">{t('settings.auto_hide.delay')}</div>
+                <div class="hint">{t('settings.seconds', { value: seconds.format(hideDelay) })}</div>
+              </div>
+              <!-- A mark at the default; the slider stops there when it
+                   passes close by. -->
+              <div class="marked">
+                <input
+                  type="range"
+                  min="0"
+                  max={HIDE_DELAY_MAX}
+                  step="0.1"
+                  aria-label={t('settings.auto_hide.delay')}
+                  bind:value={hideDelay}
+                  oninput={() => {
+                    if (Math.abs(hideDelay - HIDE_DELAY_DEFAULT) <= 0.25) {
+                      hideDelay = HIDE_DELAY_DEFAULT
+                    }
+                  }}
+                  onchange={saveHideDelay}
+                />
+                <div class="stops">
+                  <button
+                    class:selected={hideDelay === HIDE_DELAY_DEFAULT}
+                    style:left="{(HIDE_DELAY_DEFAULT / HIDE_DELAY_MAX) * 100}%"
+                    onclick={() => {
+                      hideDelay = HIDE_DELAY_DEFAULT
+                      saveHideDelay()
+                    }}
+                  >
+                    {t('settings.default')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          {/if}
+          <div class="stack separated">
+            <div>
+              <div class="label">{t('settings.speed')}</div>
+              <div class="hint">{t('settings.speed.hint')}</div>
+            </div>
+            <!-- Notched slider, like the cursor resistance one. -->
+            <div class="notched">
+              <input
+                type="range"
+                min="0"
+                max={speedChoices.length - 1}
+                step="1"
+                aria-label={t('settings.speed')}
+                aria-valuetext={t(speedChoices[speedIndex].key)}
+                bind:value={speedIndex}
+                onchange={() => run('set_notch_speed', { speed: speedChoices[speedIndex].value })}
+              />
+              <div class="stops">
+                {#each speedChoices as choice, i (choice.value)}
+                  <button
+                    class:selected={speedIndex === i}
+                    style:left="{(i / (speedChoices.length - 1)) * 100}%"
+                    onclick={() => {
+                      speedIndex = i
+                      void run('set_notch_speed', { speed: choice.value })
+                    }}
+                  >
+                    {t(choice.key)}
+                  </button>
+                {/each}
+              </div>
+            </div>
+          </div>
           <label class="row separated">
             <div>
               <div class="label">{t('settings.fullscreen')}</div>
@@ -573,6 +623,32 @@
               onchange={(e) => run('set_hide_in_fullscreen', { enabled: e.currentTarget.checked })}
             />
           </label>
+        </section>
+        <section>
+          <h2>{t('settings.group.modules')}</h2>
+          <div class="stack">
+            <div>
+              <div class="label">{t('settings.layout')}</div>
+              <div class="hint">{t('settings.layout.hint')}</div>
+            </div>
+            <div
+              class="segmented"
+              style:grid-template-columns="repeat(2, 1fr)"
+              role="radiogroup"
+              aria-label={t('settings.layout')}
+            >
+              {#each layoutChoices as choice (choice.value)}
+                <button
+                  role="radio"
+                  aria-checked={settings.moduleLayout === choice.value}
+                  class:selected={settings.moduleLayout === choice.value}
+                  onclick={() => run('set_module_layout', { layout: choice.value })}
+                >
+                  {t(choice.key)}
+                </button>
+              {/each}
+            </div>
+          </div>
         </section>
         <section>
           <h2>{t('settings.cursor')}</h2>

@@ -338,6 +338,16 @@ html[data-window='settings'] {
     margin: 0;
   }
 
+  /* A slider with a mark under it (the auto-hide delay's default). */
+  & .marked {
+    width: 180px;
+  }
+
+  & .marked input[type='range'] {
+    width: 100%;
+    margin: 0;
+  }
+
   & .stops {
     position: relative;
     height: 22px;

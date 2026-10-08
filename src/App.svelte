@@ -65,6 +65,9 @@
   const PIN_OPEN_WIDTH = 280
   const PIN_VERTICAL_LENGTH = 56
   const ALERT_MS = 4000
+  // Tucked into the edge (DF-0018): what stays visible of each shape, and of
+  // the band along the edge that brings them all out.
+  const SLIVER = 2
   // A ringing module's alarm (DF-0009): every few seconds, for a minute at
   // most; its shape keeps pulsing until it is acknowledged.
   const ALARM_EVERY_MS = 2000
@@ -80,6 +83,8 @@
     speed: 'normal',
     appearance: 'system',
     language: 'en',
+    autoHide: false,
+    autoHideDelayMs: 1000,
     anchor: null,
   })
   $effect(() => applyAppearance(status.appearance))
@@ -272,6 +277,52 @@
   const cardRects = $derived(cardRectsAt(start))
   const pins = $derived(pinsAt(cardRects[0]))
 
+  // --- Auto-hide (DF-0018): tucked into the edge when unused ---
+
+  // The cursor on the band along the edge (the gaps between the shapes).
+  let edgeHover = $state(false)
+  // Anything that needs the notch out: the cursor on it or on the band, an
+  // alert, a spotlight, a notice, a ringing timer, the move mode.
+  const wanted = $derived(
+    !status.autoHide ||
+      status.movable ||
+      hovered ||
+      edgeHover ||
+      pinHover !== null ||
+      alerting ||
+      pinAlerting ||
+      spotlight !== null ||
+      notice !== null ||
+      ringing(content.sections),
+  )
+  let tucked = $state(false)
+  $effect(() => {
+    if (wanted) {
+      tucked = false
+      return
+    }
+    const timer = setTimeout(() => (tucked = true), status.autoHideDelayMs)
+    return () => clearTimeout(timer)
+  })
+  // The backend moves the pill to the edge and lets the cursor pass.
+  $effect(() => void invoke('set_tucked', { tucked }))
+  // Tucked, only closed shapes remain, all as thick as the compact notch:
+  // they slide into the edge by that much, but for the sliver.
+  const tuck = $derived.by(() => {
+    if (!tucked) return { x: 0, y: 0 }
+    const compact = compactShape(status.edge, status.style)
+    const by = (vertical ? compact.width : compact.height) - SLIVER
+    return {
+      top: { x: 0, y: -by },
+      bottom: { x: 0, y: by },
+      left: { x: -by, y: 0 },
+      right: { x: by, y: 0 },
+    }[status.edge]
+  })
+  function tuckRect<R extends Rect>(r: R): R {
+    return { ...r, x: r.x + tuck.x, y: r.y + tuck.y }
+  }
+
   // The gaps between cards belong to the notch: hovering them keeps it open.
   const gapRects = $derived(
     cardRects.slice(1).map((b, i) => {
@@ -289,19 +340,40 @@
   )
 
 
+  // Auto-hide: a band along the edge, from the first shape to the last
+  // (gaps included), as thin as the slivers; hovering it brings all out.
+  const band = $derived.by<Rect | null>(() => {
+    if (!status.autoHide) return null
+    const rects = [cardRects[0], ...pins.map((p) => p.rect)]
+    const from = Math.min(...rects.map((r) => (vertical ? r.y : r.x)))
+    const to = Math.max(...rects.map((r) => (vertical ? r.y + r.height : r.x + r.width)))
+    return {
+      top: { x: from, y: 0, width: to - from, height: SLIVER },
+      bottom: { x: from, y: windowHeight - SLIVER, width: to - from, height: SLIVER },
+      left: { x: 0, y: from, width: SLIVER, height: to - from },
+      right: { x: windowWidth - SLIVER, y: from, width: SLIVER, height: to - from },
+    }[status.edge]
+  })
+
   // The window region: the notch first (the cursor resistance guards it),
   // then the other cards, the gaps between them and the pins. Each has a key,
   // to follow it while it moves.
   const shapes = $derived.by<(Shape & { key: string })[]>(() => [
-    { key: 'notch', ...cardRects[0], radius: cards[0].radius, attached },
+    { key: 'notch', ...tuckRect(cardRects[0]), radius: cards[0].radius, attached },
     ...cardRects.slice(1).map((r, i) => ({
       key: `card:${i + 1}`,
-      ...r,
+      ...tuckRect(r),
       radius: cards[i + 1].radius,
       attached: false,
     })),
-    ...gapRects.map((r, i) => ({ key: `gap:${i}`, ...r, radius: 0, attached: false })),
-    ...pins.map((p) => ({ key: `pin:${p.section.module}`, ...p.rect, radius: p.radius, attached })),
+    ...gapRects.map((r, i) => ({ key: `gap:${i}`, ...tuckRect(r), radius: 0, attached: false })),
+    ...pins.map((p) => ({
+      key: `pin:${p.section.module}`,
+      ...tuckRect(p.rect),
+      radius: p.radius,
+      attached,
+    })),
+    ...(band ? [{ key: 'band', ...band, radius: 0, attached: false }] : []),
   ])
   // As a string: the shapes are rebuilt whenever a module redraws (every
   // second for a running stopwatch), the region only changes with this.
@@ -399,6 +471,12 @@
     if (!dragging) return
     dragging = false
     void invoke('end_drag')
+  }
+
+  // A click on a module acknowledges it alone (a finished Claude Code
+  // session stays until its own part is clicked).
+  function acknowledge(module: string | null) {
+    if (module !== null && !status.movable) void invoke('acknowledge', { module })
   }
 
   // Right click on a module: pin or unpin it (a native menu, context_menu.rs).
@@ -534,6 +612,26 @@
 
 <svelte:window bind:innerWidth={windowWidth} bind:innerHeight={windowHeight} />
 
+<!-- Auto-hide: the band along the edge, under the shapes (DF-0018). -->
+{#if band}
+  <div
+    class="band"
+    role="presentation"
+    style:left="{band.x}px"
+    style:top="{band.y}px"
+    style:width="{band.width}px"
+    style:height="{band.height}px"
+    onmouseenter={() => (edgeHover = true)}
+    onmouseleave={() => (edgeHover = false)}
+  ></div>
+{/if}
+
+<!-- The notch and its pins slide into the edge together when tucked. -->
+<div
+  class="layer"
+  style:transform={tucked ? `translate(${tuck.x}px, ${tuck.y}px)` : null}
+  style:--duration="{duration}ms"
+>
 <Notch
   {cards}
   {start}
@@ -550,7 +648,7 @@
   style={status.style}
   {expanded}
   movable={status.movable}
-  onclick={() => !status.movable && invoke('acknowledge')}
+  onclick={acknowledge}
   onaction={(item, action) => void invoke('item_action', { item, action })}
   onpointerdown={startDrag}
   onpointermove={drag}
@@ -575,14 +673,32 @@
       bind:measured={pinWidths[pin.section.module]}
       onenter={() => enterPin(pin.section.module)}
       onleave={() => leavePin(pin.section.module)}
-      onclick={() => !status.movable && invoke('acknowledge')}
+      onclick={() => acknowledge(pin.section.module)}
       onaction={(item, action) => void invoke('item_action', { item, action })}
       onmenu={moduleMenu}
     />
   {/each}
 </div>
+</div>
 
 <style>
+  /* Over the whole window, letting the cursor through to the band below;
+     the notch and the pins take it back. */
+  .layer {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    transition: transform var(--duration) ease;
+  }
+
+  .layer :global(.notch) {
+    pointer-events: auto;
+  }
+
+  .band {
+    position: fixed;
+  }
+
   /* Over the whole window; only the pins take the cursor. */
   .pins {
     position: fixed;

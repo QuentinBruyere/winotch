@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -216,12 +216,33 @@ pub fn reset_hit_area() {
     *HIT_AREA.lock().unwrap() = None;
 }
 
+/// Tucked into the edge by the auto-hide (DF-0018): the pill then sits
+/// against the edge, and the cursor passes freely.
+static TUCKED: AtomicBool = AtomicBool::new(false);
+
+/// The front tucked the notch and its pins into the edge, or brought them
+/// out: the pill window moves to the edge (or back to its gap), and the
+/// cursor resistance follows.
+pub fn set_tucked(app: &AppHandle, tucked: bool) {
+    if TUCKED.swap(tucked, Ordering::Relaxed) == tucked {
+        return;
+    }
+    update_cursor_resistance(app);
+    if let Some(window) = app.get_webview_window(NOTCH_LABEL)
+        && let Err(e) = place(&window).and_then(|_| apply_hit_area(&window))
+    {
+        log::warn!("cannot move the tucked notch: {e}");
+    }
+}
+
 /// Cursor resistance runs only while the notch is shown and the option is on,
-/// never in move mode: the cursor must reach the notch freely to grab it.
+/// never in move mode (the cursor must reach the notch freely to grab it)
+/// nor tucked (the cursor would stop at a notch it cannot see).
 pub fn update_cursor_resistance(app: &AppHandle) {
     let state = app.state::<AppState>();
-    let enabled =
-        state.config.lock().unwrap().cursor_resistance && !state.movable.load(Ordering::Relaxed);
+    let enabled = state.config.lock().unwrap().cursor_resistance
+        && !state.movable.load(Ordering::Relaxed)
+        && !TUCKED.load(Ordering::Relaxed);
     let visible = app
         .get_webview_window(NOTCH_LABEL)
         .and_then(|w| w.is_visible().ok())
@@ -372,7 +393,12 @@ pub fn place(window: &WebviewWindow) -> tauri::Result<()> {
         area,
         size,
         compact_length(window, placement.edge)?,
-        placement.gap_px(window.scale_factor()?),
+        // Tucked, the pill sits against the edge like the notch (DF-0018).
+        if TUCKED.load(Ordering::Relaxed) {
+            0
+        } else {
+            placement.gap_px(window.scale_factor()?)
+        },
     );
     window.set_position(PhysicalPosition::new(layout.window.0, layout.window.1))?;
 

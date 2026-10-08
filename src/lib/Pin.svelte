@@ -45,6 +45,7 @@
     measured?: number
     onenter: () => void
     onleave: () => void
+    // A click on the pin: its module is acknowledged.
     onclick: () => void
     onaction: (itemId: string, actionId: string) => void
     // Right click on the pin (its module's id).

@@ -12,7 +12,7 @@ use std::time::{Duration, Instant};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::module::{Action, Host, Icon, Item, Module, Tone, format_duration};
+use crate::module::{Action, Compact, Host, Icon, Item, Module, Tone, format_duration};
 use crate::t;
 use countdown::{Countdown, Phase};
 
@@ -245,7 +245,13 @@ fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> 
             Tone::Neutral,
             vec![start, reset],
         ),
-        Phase::Finished => (t!("timer.finished"), None, Tone::Attention, vec![reset]),
+        // "Time's up · 25:00": what just ran out.
+        Phase::Finished => (
+            t!("timer.finished"),
+            Some(format_duration(countdown.duration.as_secs())),
+            Tone::Attention,
+            vec![reset],
+        ),
     };
     let mut items = vec![Item {
         id: "timer".into(),
@@ -258,6 +264,11 @@ fn items(countdown: &Countdown, settings: &Settings, now: Instant) -> Vec<Item> 
         // Not started: the compact views show the timer icon.
         quiet: phase == Phase::Idle,
         ringing: phase == Phase::Finished,
+        // Closed notch and pin: the duration after "Time's up", fainter.
+        compact: (phase == Phase::Finished).then(|| Compact {
+            label: t!("timer.finished"),
+            title: format_duration(countdown.duration.as_secs()),
+        }),
         ..Item::default()
     }];
     if phase == Phase::Idle && !settings.favorites.is_empty() {
@@ -326,6 +337,7 @@ mod tests {
         let items = items(&countdown, &Settings::default(), t0 + minutes(2));
         assert_eq!(items.len(), 1);
         assert_eq!(items[0].label, "Time's up");
+        assert_eq!(items[0].detail.as_deref(), Some("01:00"));
         assert_eq!(items[0].tone, Tone::Attention);
         assert!(items[0].ringing);
         assert_eq!(ids(&items[0]), ["reset"]);
