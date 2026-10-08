@@ -78,6 +78,7 @@
   "item.paused": "paused",
   "notch.menu.pin": "Pin",
   "notch.menu.unpin": "Unpin",
+  "notch.more": "{count} more, in the open notch",
   "notch.no_module": "No module enabled",
   "screen.label": "Screen {number} · {width} × {height}",
   "screen.primary": "{screen} · primary",

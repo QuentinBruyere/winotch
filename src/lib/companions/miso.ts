@@ -19,9 +19,9 @@ import {
 //
 // | State     | Arrival (once)          | Loop                                          |
 // |-----------|-------------------------|-----------------------------------------------|
-// | neutral   | -                       | ★ slow cat blink, ★ tail swish, looks around, |
-// |           |                         | ★ licks its paw, ★ curls into a loaf to sleep |
-// |           |                         | ("z"s)                                        |
+// | neutral   | ★ slow cat blink,       | ★ sleeps curled into a loaf ("z"s rising)     |
+// |           | ★ licks its paw, ★ curls|                                               |
+// |           | into a loaf             |                                               |
 // | active    | -                       | ★ taps a keyboard with its paws, ★ chases a   |
 // |           |                         | ball of yarn, ★ ears twitch while it watches  |
 // | attention | -                       | ears up, ★ tail puffed, under a blinking "!", |
@@ -180,17 +180,12 @@ const swish = [
   ...hold(pose({ tail: 'mid' }), 2),
   ...hold(rest, 2),
 ]
-const lookAround = [
-  ...hold(pose({ look: [-1, 0] }), 6),
-  ...hold(pose({ look: [1, 0] }), 6),
-  ...hold(rest, 4),
-]
 // Licks its paw, eyes shut.
 const groom = [
   ...times([pose({ eyes: 'closed', paws: 'lick' }), pose({ eyes: 'closed', paws: 'lick', dy: 1 })], 4),
   ...hold(rest, 2),
 ]
-// Curled into a loaf, eyes shut, "z"s rising.
+// Curled into a loaf, eyes shut.
 const LOAF = [
   '.#........#.',
   '.##......##.',
@@ -208,19 +203,6 @@ const loaf = (z: Layer[]) =>
     layer(['oo...oo'], 8, 11),
     ...z,
   )
-const sleep = [
-  pose({ eyes: 'half' }),
-  ...hold(loaf([]), 4),
-  ...times(
-    [
-      ...hold(loaf([layer(ZZ, 18, 5)]), 4),
-      ...hold(loaf([layer(ZZ, 19, 2)]), 4),
-      ...hold(loaf([]), 4),
-    ],
-    3,
-  ),
-  pose({ eyes: 'half' }),
-]
 
 // --- Working ---
 
@@ -278,21 +260,21 @@ export const miso: Companion = {
   width: WIDTH,
   height: HEIGHT,
   animations: {
-    // Waiting for a prompt: slow blinks, swishes its tail, looks around,
-    // licks its paw, curls up to sleep.
+    // Waiting for a prompt: a slow blink, licks its paw once, curls into a
+    // loaf, then sleeps there ("z"s) as long as it waits.
     neutral: {
       fps: 8,
-      frames: [
-        ...hold(rest, 12),
-        ...slowBlink,
-        ...swish,
-        ...hold(rest, 8),
-        ...lookAround,
-        ...groom,
+      intro: [
         ...hold(rest, 6),
         ...slowBlink,
-        ...sleep,
-        ...hold(rest, 4),
+        ...groom,
+        pose({ eyes: 'half' }),
+        ...hold(loaf([]), 2),
+      ],
+      frames: [
+        ...hold(loaf([layer(ZZ, 18, 5)]), 4),
+        ...hold(loaf([layer(ZZ, 19, 2)]), 4),
+        ...hold(loaf([]), 4),
       ],
     },
     // Working: taps a keyboard, watches with twitching ears, chases a ball

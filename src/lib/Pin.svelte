@@ -3,10 +3,20 @@
   import type { ModuleUis } from '../modules'
   import Cover from './Cover.svelte'
   import Dot from './Dot.svelte'
+  import ModuleIcon from './ModuleIcon.svelte'
+  import More from './More.svelte'
   import Marquee from './Marquee.svelte'
   import Sections from './Sections.svelte'
   import { icons } from './icons'
-  import { mostUrgent, ringing, type Rect, type Section } from './content'
+  import {
+    compactMarks,
+    MAX_COMPACT_COMPANIONS,
+    MAX_VERTICAL_COMPANIONS,
+    mostUrgent,
+    ringing,
+    type Rect,
+    type Section,
+  } from './content'
 
   // Space on each side of the closed pin's summary, part of `measured`.
   const PIN_PADDING = 12
@@ -59,7 +69,9 @@
   // A spotlight shows the text of a quiet item, if it has one: an item with
   // nothing to say (a media module with nothing playing) keeps its icon.
   const quiet = $derived(!!top?.quiet && (!spotlit || !compactLabel))
-  const dotted = $derived(section.items.filter((i) => i.dot))
+  const dotted = $derived(
+    compactMarks(section.items, vertical ? MAX_VERTICAL_COMPANIONS : MAX_COMPACT_COMPANIONS),
+  )
   // The item's own icon (the volume's level), else the module's.
   const Icon = $derived(
     top?.icon ? icons[top.icon] : (moduleUis[section.module]?.icon ?? Puzzle),
@@ -80,6 +92,8 @@
   class="pin"
   class:open
   class:vertical={vertical && !open}
+  class:after-notch={section.pin === 'right'}
+  class:before-notch={section.pin === 'left'}
   class:ringing={ringing([section])}
   style:left="{rect.x}px"
   style:top="{rect.y}px"
@@ -100,42 +114,48 @@
   {#if open}
     <Sections list={[section]} height={rect.height} {moduleUis} {onaction} />
   {:else if vertical}
-    {#if dotted.length > 0}
+    {#if dotted.shown.length > 0}
       <span class="dots column">
-        {#each dotted as item (item.id)}
+        {#each dotted.shown as item (item.id)}
           <Dot {item} compact />
         {/each}
+        {#if dotted.hidden > 0}<More count={dotted.hidden} />{/if}
       </span>
     {:else}
-      <span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>
+      <ModuleIcon icon={Icon} item={top} {onaction} />
     {/if}
   {:else if top}
-    <span class="summary" bind:offsetWidth={summaryWidth}>
-      {#if dotted.length > 0}
-        <span class="dots">
-          {#each dotted as item (item.id)}
-            <Dot {item} compact />
-          {/each}
-        </span>
-      {/if}
-      {#if quiet && top.image !== null}
-        <Cover src={top.image} icon={moduleUis[section.module]?.icon ?? Puzzle} dimmed={top.dimmed} />
-      {:else if quiet}
-        <span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>
-      {:else}
-        {#if top.image !== null}
+    <!-- At the closed width from the start, against the pin's side by the
+         notch: while the pin folds back around it, it does not move. -->
+    <span class="closed" style:width="{Math.max(0, rect.width - 2 * PIN_PADDING)}px">
+      <span class="summary" bind:offsetWidth={summaryWidth}>
+        {#if dotted.shown.length > 0}
+          <span class="dots">
+            {#each dotted.shown as item (item.id)}
+              <Dot {item} compact />
+            {/each}
+            {#if dotted.hidden > 0}<More count={dotted.hidden} />{/if}
+          </span>
+        {/if}
+        {#if quiet && top.image !== null}
           <Cover src={top.image} icon={moduleUis[section.module]?.icon ?? Puzzle} dimmed={top.dimmed} />
+        {:else if quiet}
+          <ModuleIcon icon={Icon} item={top} {onaction} />
+        {:else}
+          {#if top.image !== null}
+            <Cover src={top.image} icon={moduleUis[section.module]?.icon ?? Puzzle} dimmed={top.dimmed} />
+          {/if}
+          {#if compactLabel}
+            <Marquee
+              text={compactLabel}
+              scroll={top.scroll}
+              dimmed={top.dimmed}
+              onturn={(ms) => ontextreadtime(section.module, ms)}
+            />
+          {/if}
+          {#if top.compact?.title}<span class="muted">{top.compact.title}</span>{/if}
         {/if}
-        {#if compactLabel}
-          <Marquee
-            text={compactLabel}
-            scroll={top.scroll}
-            dimmed={top.dimmed}
-            onturn={(ms) => ontextreadtime(section.module, ms)}
-          />
-        {/if}
-        {#if top.compact?.title}<span class="muted">{top.compact.title}</span>{/if}
-      {/if}
+      </span>
     </span>
   {/if}
 </div>
@@ -157,11 +177,28 @@
       border-radius var(--duration) ease;
   }
 
-  /* Closed, its summary or icon is centered. */
+  /* Closed, its summary or icon is centered. Beside the notch, its box
+     keeps to the side by the notch, the one that stays still while the pin
+     opens and closes. */
   .pin:not(.open) {
     display: flex;
     align-items: center;
     justify-content: center;
+  }
+
+  .pin.after-notch:not(.open) {
+    justify-content: flex-start;
+  }
+
+  .pin.before-notch:not(.open) {
+    justify-content: flex-end;
+  }
+
+  .closed {
+    display: flex;
+    flex-shrink: 0;
+    justify-content: center;
+    height: 100%;
   }
 
   /* The essentials, at their natural width: measured to size the pin. */

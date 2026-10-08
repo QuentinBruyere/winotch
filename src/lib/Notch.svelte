@@ -6,10 +6,15 @@
   import Cover from './Cover.svelte'
   import Dot from './Dot.svelte'
   import Marquee from './Marquee.svelte'
+  import ModuleIcon from './ModuleIcon.svelte'
+  import More from './More.svelte'
   import Sections from './Sections.svelte'
   import { icons } from './icons'
   import {
+    compactMarks,
     compactSection,
+    MAX_COMPACT_COMPANIONS,
+    MAX_VERTICAL_COMPANIONS,
     corners,
     mostUrgent,
     ringing,
@@ -87,7 +92,12 @@
   // a dot (a state, e.g. a Claude Code session), others just show text.
   const shown = $derived(compactSection(allSections))
   const top = $derived(shown && mostUrgent(shown.items))
-  const dotted = $derived(shown?.items.filter((i) => i.dot) ?? [])
+  const dotted = $derived(
+    compactMarks(
+      shown?.items ?? [],
+      edge === 'left' || edge === 'right' ? MAX_VERTICAL_COMPANIONS : MAX_COMPACT_COMPANIONS,
+    ),
+  )
   // The item's own icon (the volume's level), else the module's.
   const ShownIcon = $derived(
     top?.icon ? icons[top.icon] : shown ? iconOf(shown.module) : null,
@@ -190,28 +200,30 @@
       {:else if vertical}
         <!-- Thin vertical notch: the shown module's dots, else its icon;
              details on hover. -->
-        {#if dotted.length > 0}
+        {#if dotted.shown.length > 0}
           <span class="dots column">
-            {#each dotted as item (item.id)}
+            {#each dotted.shown as item (item.id)}
               <Dot {item} compact />
             {/each}
+            {#if dotted.hidden > 0}<More count={dotted.hidden} />{/if}
           </span>
         {:else if ShownIcon}
-          <span class="module-icon"><ShownIcon size={14} strokeWidth={2.25} /></span>
+          <ModuleIcon icon={ShownIcon} item={top} {onaction} />
         {/if}
       {:else if top}
         <span class="row compact">
-          {#if dotted.length > 0}
+          {#if dotted.shown.length > 0}
             <span class="dots">
-              {#each dotted as item (item.id)}
+              {#each dotted.shown as item (item.id)}
                 <Dot {item} compact />
               {/each}
+              {#if dotted.hidden > 0}<More count={dotted.hidden} />{/if}
             </span>
           {/if}
           {#if quiet && top.image !== null && shown}
             <Cover src={top.image} icon={iconOf(shown.module)} dimmed={top.dimmed} />
           {:else if quiet && ShownIcon}
-            <span class="module-icon"><ShownIcon size={14} strokeWidth={2.25} /></span>
+            <ModuleIcon icon={ShownIcon} item={top} {onaction} />
           {:else}
             {#if top.slider}
               <!-- A slider's value as a small bar (e.g. the volume). -->

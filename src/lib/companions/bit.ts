@@ -21,8 +21,8 @@ import {
 //
 // | State     | Arrival (once)              | Loop                                        |
 // |-----------|-----------------------------|---------------------------------------------|
-// | neutral   | -                           | blinks, looks left and right,               |
-// |           |                             | ★ sleep mode (eyes shut, "z"s)              |
+// | neutral   | blinks, looks around, eyes  | ★ sleep mode (eyes shut, "z"s rising)       |
+// |           | closing                     |                                             |
 // | active    | -                           | types (★ code scrolling on its screen,      |
 // |           |                             | bulb blinking), ★ radio waves from the      |
 // |           |                             | antenna, ★ loading bar on the screen,       |
@@ -241,21 +241,18 @@ export const bit: Companion = {
   width: WIDTH,
   height: HEIGHT,
   animations: {
-    // Waiting for a prompt: blinks, looks around, goes to sleep.
+    // Waiting for a prompt: blinks, looks around once, its eyes close, then
+    // it stays in sleep mode ("z"s) as long as it waits.
     neutral: {
       fps: 8,
-      frames: [
-        ...hold(rest, 16),
+      intro: [
+        ...hold(rest, 6),
         ...blink,
-        ...hold(rest, 10),
-        ...hold(pose({ look: [-1, 0] }), 6),
-        ...hold(pose({ look: [1, 0] }), 6),
-        ...hold(rest, 8),
-        ...blink,
-        ...times(sleep, 2),
-        ...blink,
-        ...hold(rest, 4),
+        ...hold(pose({ look: [-1, 0] }), 4),
+        ...hold(pose({ look: [1, 0] }), 4),
+        ...hold(pose({ eyes: 'half' }), 4),
       ],
+      frames: sleep,
     },
     // Working: types with code on the screen, sends radio waves, loads,
     // walks about, scans.

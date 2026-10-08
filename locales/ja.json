@@ -78,6 +78,7 @@
   "item.paused": "一時停止中",
   "notch.menu.pin": "ピン留め",
   "notch.menu.unpin": "ピン留めを外す",
+  "notch.more": "他に{count}件（開いたノッチに表示）",
   "notch.no_module": "有効なモジュールはありません",
   "screen.label": "画面 {number} · {width} × {height}",
   "screen.primary": "{screen} · メイン",

@@ -3,6 +3,7 @@
   import type { ModuleUis } from '../modules'
   import Cover from './Cover.svelte'
   import Dot from './Dot.svelte'
+  import ModuleIcon from './ModuleIcon.svelte'
   import { rowWidth } from './companions'
   import { sliderPercent, type Item, type Section } from './content'
   import { filled, icons } from './icons'
@@ -120,6 +121,9 @@
     {@const companionSize = section.items.find((i) => i.companion)?.companion?.size}
     <!-- A featured item (media player) carries its own picture: no icon. -->
     {@const featured = section.items.some((i) => i.layout === 'featured')}
+    <!-- An item whose icon is a button (the volume's mute) lends it to the
+         module: its icon stands first, and acts. -->
+    {@const lead = section.items.find((i) => i.iconAction)}
     <!-- The notch window never takes the keyboard focus (see Notch.svelte). -->
     <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_noninteractive_element_interactions -->
     <div
@@ -134,7 +138,13 @@
         onmenu(section.module, itemAt(e))
       }}
     >
-      {#if !featured}<span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>{/if}
+      {#if !featured}
+        <ModuleIcon
+          icon={lead?.icon ? icons[lead.icon] : Icon}
+          item={lead ?? null}
+          {onaction}
+        />
+      {/if}
       <ul class="rows">
         {#each section.items as item (item.id)}
           {#if item.layout === 'featured'}

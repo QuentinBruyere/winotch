@@ -78,6 +78,7 @@
   "item.paused": "pausiert",
   "notch.menu.pin": "Anheften",
   "notch.menu.unpin": "Lösen",
+  "notch.more": "{count} weitere, in der geöffneten Notch",
   "notch.no_module": "Kein Modul aktiv",
   "screen.label": "Bildschirm {number} · {width} × {height}",
   "screen.primary": "{screen} · Hauptbildschirm",

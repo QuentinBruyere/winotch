@@ -162,7 +162,8 @@ fn item(level: Level) -> Item {
             step: 1.0,
             readonly: false,
         }),
-        actions: vec![Action::icon("mute", icon, &tooltip)],
+        // The level's icon is the mute button, wherever it shows.
+        icon_action: Some(Action::icon("mute", icon, &tooltip)),
         // The compact views show the icon, and the value only for a moment
         // after a change (`Host::spotlight`), like the stopwatch at rest.
         quiet: true,
@@ -183,7 +184,8 @@ mod tests {
         });
         assert_eq!(on.label, "45%");
         assert_eq!(on.slider.as_ref().map(|s| s.value), Some(45.0));
-        assert_eq!(on.actions[0].icon, Some(Icon::VolumeMedium));
+        assert!(on.actions.is_empty());
+        assert_eq!(on.icon_action.as_ref().map(|a| a.id.as_str()), Some("mute"));
         assert_eq!(on.icon, Some(Icon::VolumeMedium));
         assert!(on.quiet);
         let off = item(Level {
@@ -191,7 +193,10 @@ mod tests {
             muted: true,
         });
         assert_eq!(off.label, "Muted");
-        assert_eq!(off.actions[0].icon, Some(Icon::Muted));
+        assert_eq!(
+            off.icon_action.as_ref().and_then(|a| a.icon),
+            Some(Icon::Muted)
+        );
     }
 
     #[test]

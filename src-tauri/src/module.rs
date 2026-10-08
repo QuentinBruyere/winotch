@@ -126,6 +126,10 @@ pub struct Item {
     /// Replaces the module's icon in the compact views (e.g. the volume's
     /// level).
     pub icon: Option<Icon>,
+    /// Makes the icon shown for the item a button, wherever it is (the
+    /// open notch's module icon, the closed notch, a pin): clicking it calls
+    /// `Module::item_action` with its id, its label as tooltip (e.g. mute).
+    pub icon_action: Option<Action>,
     /// Rings (e.g. a timer whose time is up): an alarm repeats and the shape
     /// showing it pulses until the user acknowledges it.
     pub ringing: bool,

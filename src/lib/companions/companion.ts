@@ -34,8 +34,9 @@ export const RATIO = 1.5
 
 // How much of its height each of its sides overlaps its neighbours: the
 // room for its scenes is empty at rest. What it takes in a row is then
-// `RATIO - 2 * OVERLAP` times its height.
-export const OVERLAP = 0.3
+// `RATIO - 2 * OVERLAP` times its height. Enough is left for a little gap
+// between two companions (Miso's tail reaches further right).
+export const OVERLAP = 0.22
 
 // A piece of a picture placed at (`x`, `y`): `#` paints a pixel, `o` clears
 // one (an eye, a mouth), anything else leaves the picture as it is.
@@ -122,11 +123,13 @@ export function pictures(animation: Animation): { paths: string[]; order: number
   return { paths, order }
 }
 
-// The middle row of a companion as it rests (the first picture of its
-// neutral loop, without symbols above the head), antenna or feet included:
-// it is drawn moved so this row sits centered on the texts.
+// The middle row of a companion standing awake (the first picture of its
+// neutral animation, arrival included, without symbols above the head),
+// antenna or feet included: it is drawn moved so this row sits centered on
+// the texts, even while it sleeps lower.
 export function center(companion: Companion): number {
-  const frame = companion.animations.neutral.frames[0]
+  const neutral = companion.animations.neutral
+  const frame = neutral.intro?.[0] ?? neutral.frames[0]
   const rows = frame.flatMap((row, y) => (row.includes('#') ? [y] : []))
   return rows.length === 0 ? companion.height / 2 : (rows[0] + rows[rows.length - 1] + 1) / 2
 }

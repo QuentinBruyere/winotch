@@ -63,6 +63,8 @@ export interface Item {
   quiet: boolean
   // Replaces the module's icon in the compact views (the volume's level).
   icon: Icon | null
+  // Makes the item's icon a button (the volume's mute), wherever it shows.
+  iconAction: Action | null
   // Rings (a timer whose time is up): an alarm repeats and its shape pulses.
   ringing: boolean
   // The texts of the compact views (closed notch, pin), if not the label
@@ -214,6 +216,27 @@ const priority: Tone[] = ['attention', 'error', 'question', 'success', 'active',
 
 export function mostUrgent(items: Item[]): Item | undefined {
   return [...items].sort((a, b) => priority.indexOf(a.tone) - priority.indexOf(b.tone))[0]
+}
+
+// How many companions the compact views show at most (DF-0023): a closed
+// notch, a pin; fewer in the thin vertical notch.
+export const MAX_COMPACT_COMPANIONS = 4
+export const MAX_VERTICAL_COMPANIONS = 3
+
+// The items with a dot or companion a compact view shows. With companions
+// and more than `max` of them, only the `max` most urgent, in their own
+// order (they keep their places); `hidden` says how many are left out.
+export function compactMarks(items: Item[], max: number): { shown: Item[]; hidden: number } {
+  const marked = items.filter((i) => i.dot)
+  if (marked.length <= max || !marked.some((i) => i.companion)) {
+    return { shown: marked, hidden: 0 }
+  }
+  const kept = new Set(
+    [...marked]
+      .sort((a, b) => priority.indexOf(a.tone) - priority.indexOf(b.tone))
+      .slice(0, max),
+  )
+  return { shown: marked.filter((i) => kept.has(i)), hidden: marked.length - max }
 }
 
 export function toneColor(tone: Tone): string {

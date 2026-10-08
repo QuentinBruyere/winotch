@@ -78,6 +78,7 @@
   "item.paused": "pause",
   "notch.menu.pin": "Épingler",
   "notch.menu.unpin": "Désépingler",
+  "notch.more": "{count} de plus, dans le notch ouvert",
   "notch.no_module": "Aucun module actif",
   "screen.label": "Écran {number} · {width} × {height}",
   "screen.primary": "{screen} · principal",

@@ -78,6 +78,7 @@
   "item.paused": "en pausa",
   "notch.menu.pin": "Anclar",
   "notch.menu.unpin": "Desanclar",
+  "notch.more": "{count} más, en el notch abierto",
   "notch.no_module": "Ningún módulo activo",
   "screen.label": "Pantalla {number} · {width} × {height}",
   "screen.primary": "{screen} · principal",

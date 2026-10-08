@@ -19,8 +19,9 @@ import {
 //
 // | State     | Arrival (once)    | Loop                                                  |
 // |-----------|-------------------|-------------------------------------------------------|
-// | neutral   | -                 | blinks, looks left and right,                         |
-// |           |                   | ★ melts into a puddle to sleep ("z"s), takes shape    |
+// | neutral   | blinks, looks     | ★ naps as a puddle ("z"s rising)                      |
+// |           | around, ★ melts   |                                                       |
+// |           | into a puddle     |                                                       |
 // | active    | -                 | bounces arms up, types,                               |
 // |           |                   | ★ rolls side to side (eyes going round),              |
 // |           |                   | ★ wobbles like jelly, ★ bounces a ball on its head    |
@@ -173,7 +174,6 @@ const nap = [
   ...hold(puddle([layer(ZZ, 17, 3)]), 4),
   ...hold(puddle([layer(ZZ, 18, 0)]), 4),
 ]
-const melt = [...melting, ...times(nap, 3), ...[...melting].reverse(), ...blink]
 
 // --- Working ---
 
@@ -267,20 +267,12 @@ export const bloop: Companion = {
   width: WIDTH,
   height: HEIGHT,
   animations: {
-    // Waiting for a prompt: blinks, looks around, melts into a puddle to
-    // sleep.
+    // Waiting for a prompt: blinks, looks around once, melts into a puddle,
+    // then naps there ("z"s) as long as it waits.
     neutral: {
       fps: 8,
-      frames: [
-        ...hold(rest, 16),
-        ...blink,
-        ...hold(rest, 10),
-        ...lookAround,
-        ...hold(rest, 8),
-        ...blink,
-        ...melt,
-        ...hold(rest, 4),
-      ],
+      intro: [...hold(rest, 6), ...blink, ...lookAround, ...melting],
+      frames: nap,
     },
     // Working: bounces, types, rolls about, wobbles, plays with a ball.
     active: {
