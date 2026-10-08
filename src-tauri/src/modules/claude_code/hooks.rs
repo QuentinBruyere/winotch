@@ -5,7 +5,6 @@
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
-use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json::{Map, Value, json};
 
@@ -74,20 +73,37 @@ fn write(path: &Path, settings: Value) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
+    // One backup, the settings as they were before winotch's last change.
     if path.exists() {
-        let stamp = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0);
-        fs::copy(
-            path,
-            path.with_extension(format!("json.winotch-backup-{stamp}")),
-        )?;
+        fs::copy(path, path.with_extension("json.winotch-backup"))?;
+        remove_old_backups(path);
     }
     let text = serde_json::to_string_pretty(&settings).map_err(io::Error::other)? + "\n";
     let tmp = path.with_extension("json.winotch-tmp");
     fs::write(&tmp, text)?;
     fs::rename(&tmp, path)
+}
+
+/// Removes the dated backups older versions of winotch left at each change
+/// (`settings.json.winotch-backup-<seconds>`); never anyone else's files.
+fn remove_old_backups(path: &Path) {
+    let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
+        return;
+    };
+    let prefix = format!("{}.winotch-backup-", name.to_string_lossy());
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let file = entry.file_name();
+        let file = file.to_string_lossy();
+        let dated = file
+            .strip_prefix(&prefix)
+            .is_some_and(|stamp| !stamp.is_empty() && stamp.bytes().all(|b| b.is_ascii_digit()));
+        if dated && let Err(e) = fs::remove_file(entry.path()) {
+            log::warn!("cannot remove the old backup {file}: {e}");
+        }
+    }
 }
 
 fn is_ours(handler: &Value) -> bool {
@@ -234,6 +250,47 @@ mod tests {
         uninstall(&path).unwrap();
         assert!(!is_installed(&path));
         assert_eq!(read(&path).unwrap(), user_settings());
+
+        fs::remove_dir_all(&dir).unwrap();
+    }
+
+    #[test]
+    fn one_backup_is_kept_and_old_dated_ones_removed() {
+        let dir = std::env::temp_dir().join(format!("winotch-test-backup-{}", std::process::id()));
+        let path = dir.join("settings.json");
+        fs::create_dir_all(&dir).unwrap();
+        fs::write(&path, serde_json::to_string(&user_settings()).unwrap()).unwrap();
+        for old in [
+            "settings.json.winotch-backup-1790961255",
+            "settings.json.winotch-backup-17",
+        ] {
+            fs::write(dir.join(old), "{}").unwrap();
+        }
+        // Not winotch's dated backups: left alone.
+        for other in [
+            "settings.json.bak.20260813",
+            "settings.json.winotch-backup-notes",
+        ] {
+            fs::write(dir.join(other), "{}").unwrap();
+        }
+
+        install(&path, 1234, "tok").unwrap();
+        install(&path, 1234, "tok").unwrap();
+
+        let mut files: Vec<String> = fs::read_dir(&dir)
+            .unwrap()
+            .map(|e| e.unwrap().file_name().to_string_lossy().into_owned())
+            .collect();
+        files.sort();
+        assert_eq!(
+            files,
+            [
+                "settings.json",
+                "settings.json.bak.20260813",
+                "settings.json.winotch-backup",
+                "settings.json.winotch-backup-notes",
+            ]
+        );
 
         fs::remove_dir_all(&dir).unwrap();
     }
