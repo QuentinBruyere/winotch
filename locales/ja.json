@@ -54,6 +54,8 @@
   "clock.show.time": "時刻",
   "clock.show.time_and_date": "時刻と日付",
   "item.paused": "一時停止中",
+  "notch.menu.pin": "ピン留め",
+  "notch.menu.unpin": "ピン留めを外す",
   "notch.no_module": "有効なモジュールはありません",
   "screen.label": "画面 {number} · {width} × {height}",
   "screen.primary": "{screen} · メイン",

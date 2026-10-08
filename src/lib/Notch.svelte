@@ -3,6 +3,8 @@
   import { cubicOut } from 'svelte/easing'
   import { fade } from 'svelte/transition'
   import type { ModuleUis } from '../modules'
+  import Cover from './Cover.svelte'
+  import Marquee from './Marquee.svelte'
   import Sections from './Sections.svelte'
   import { icons } from './icons'
   import {
@@ -29,6 +31,7 @@
     moduleUis,
     notice,
     spotlight,
+    ontextreadtime,
     edge,
     style,
     expanded,
@@ -40,6 +43,7 @@
     onpointerdown,
     onpointermove,
     onpointerup,
+    onmenu,
   }: {
     // The notch, then the other cards of the separate layout (DF-0011).
     cards: Card[]
@@ -59,6 +63,8 @@
     notice: string | null
     // A module showing its value for a moment, even when quiet (DF-0013).
     spotlight: string | null
+    // How long a module's compact text needs to be read once (Marquee).
+    ontextreadtime: (module: string, ms: number) => void
     edge: Edge
     style: Style
     expanded: boolean
@@ -71,6 +77,8 @@
     onpointerdown: (e: PointerEvent) => void
     onpointermove: () => void
     onpointerup: () => void
+    // Right click on a module (its id).
+    onmenu: (module: string) => void
   } = $props()
 
   // The compact notch shows a single module (DF-0011). Only some items have
@@ -82,8 +90,11 @@
   const ShownIcon = $derived(
     top?.icon ? icons[top.icon] : shown ? iconOf(shown.module) : null,
   )
+  const compactLabel = $derived(top ? (top.compact?.label ?? top.label) : '')
   const compactTitle = $derived(top ? (top.compact ? top.compact.title : top.title) : '')
-  const quiet = $derived(!!top?.quiet && shown?.module !== spotlight)
+  // A spotlight shows the text of a quiet item, if it has one: an item with
+  // nothing to say (a media module with nothing playing) keeps its icon.
+  const quiet = $derived(!!top?.quiet && (shown?.module !== spotlight || !compactLabel))
 
   function iconOf(module: string) {
     return moduleUis[module]?.icon ?? Puzzle
@@ -164,11 +175,16 @@
       {onpointermove}
       {onpointerup}
       onpointercancel={onpointerup}
+      oncontextmenu={(e) => {
+        // Open, each module's part has its own menu (Sections).
+        if (!expanded && shown) onmenu(shown.module)
+        e.preventDefault()
+      }}
     >
       {#if notice}
         <span class="row compact"><span class="label">{notice}</span></span>
       {:else if expanded}
-        <Sections list={notch.sections} {note} {moduleUis} {onaction} />
+        <Sections list={notch.sections} {note} {moduleUis} {onaction} {onmenu} />
       {:else if vertical}
         <!-- Thin vertical notch: the shown module's dots, else its icon;
              details on hover. -->
@@ -198,7 +214,9 @@
               {/each}
             </span>
           {/if}
-          {#if quiet && ShownIcon}
+          {#if quiet && top.image !== null && shown}
+            <Cover src={top.image} icon={iconOf(shown.module)} dimmed={top.dimmed} />
+          {:else if quiet && ShownIcon}
             <span class="module-icon"><ShownIcon size={14} strokeWidth={2.25} /></span>
           {:else}
             {#if top.slider}
@@ -207,7 +225,17 @@
                 <span style:width="{sliderPercent(top.slider)}%"></span>
               </span>
             {/if}
-            <span class="label">{top.compact?.label ?? top.label}</span>
+            {#if top.image !== null && shown}
+              <Cover src={top.image} icon={iconOf(shown.module)} dimmed={top.dimmed} />
+            {/if}
+            {#if compactLabel}
+              <Marquee
+                text={compactLabel}
+                scroll={top.scroll}
+                dimmed={top.dimmed}
+                onturn={(ms) => shown && ontextreadtime(shown.module, ms)}
+              />
+            {/if}
           {/if}
           {#if compactTitle}<span class="muted">{compactTitle}</span>{/if}
         </span>
@@ -232,7 +260,7 @@
         {onclick}
         onkeydown={(e) => e.key === 'Enter' && onclick()}
       >
-        <Sections list={card.sections} height={card.height} {moduleUis} {onaction} />
+        <Sections list={card.sections} height={card.height} {moduleUis} {onaction} {onmenu} />
       </div>
     {/each}
   </div>

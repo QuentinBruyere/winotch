@@ -1,7 +1,8 @@
 <script lang="ts">
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import type { ModuleUis } from '../modules'
-  import { sliderPercent, toneColor, type Section } from './content'
+  import Cover from './Cover.svelte'
+  import { sliderPercent, toneColor, type Item, type Section } from './content'
   import { icons } from './icons'
 
   // The modules shown in an open card or pin, one part each, its icon first
@@ -12,6 +13,7 @@
     height = null,
     moduleUis,
     onaction,
+    onmenu,
   }: {
     list: Section[]
     // Shown when the list is empty (no module enabled).
@@ -22,6 +24,8 @@
     moduleUis: ModuleUis
     // A button of an item: `itemId` is `<module id>:<item id>`.
     onaction: (itemId: string, actionId: string) => void
+    // Right click on a module's part (its id).
+    onmenu?: (module: string) => void
   } = $props()
 
   function iconOf(module: string) {
@@ -33,6 +37,56 @@
   let held = $state<Record<string, number>>({})
 </script>
 
+{#snippet slider(item: Item)}
+  {@const slider = item.slider!}
+  {@const value = held[item.id] ?? slider.value}
+  <input
+    type="range"
+    class="slider"
+    aria-label={item.title}
+    min={slider.min}
+    max={slider.max}
+    step={slider.step}
+    {value}
+    disabled={slider.readonly}
+    style:--fill="{sliderPercent(slider, value)}%"
+    onpointerdown={() => (held[item.id] = slider.value)}
+    oninput={(e) => {
+      const next = Number(e.currentTarget.value)
+      held[item.id] = next
+      onaction(item.id, `set:${next}`)
+    }}
+    onpointerup={() => delete held[item.id]}
+    onpointercancel={() => delete held[item.id]}
+    onclick={(e) => e.stopPropagation()}
+  />
+{/snippet}
+
+{#snippet actions(item: Item, size: number)}
+  <span class="actions">
+    {#each item.actions as action (action.id)}
+      {@const ButtonIcon = action.icon ? icons[action.icon] : null}
+      <button
+        class="action"
+        class:text={!ButtonIcon}
+        title={action.label}
+        aria-label={action.label}
+        onclick={(e) => {
+          // Not an acknowledgement of the whole notch.
+          e.stopPropagation()
+          onaction(item.id, action.id)
+        }}
+      >
+        {#if ButtonIcon}
+          <ButtonIcon {size} strokeWidth={2.5} />
+        {:else}
+          {action.label}
+        {/if}
+      </button>
+    {/each}
+  </span>
+{/snippet}
+
 <div
   class="list"
   class:centered={list.length === 0}
@@ -41,73 +95,59 @@
   {#each list as section (section.module)}
     {@const Icon = iconOf(section.module)}
     {@const dottedRows = section.items.some((i) => i.dot)}
-    <div class="section">
-      <span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>
+    <!-- A featured item (media player) carries its own picture: no icon. -->
+    {@const featured = section.items.some((i) => i.layout === 'featured')}
+    <div
+      class="section"
+      role="group"
+      oncontextmenu={(e) => {
+        // In a pin, the pin itself shows the menu.
+        if (!onmenu) return
+        e.preventDefault()
+        e.stopPropagation()
+        onmenu(section.module)
+      }}
+    >
+      {#if !featured}<span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>{/if}
       <ul class="rows">
         {#each section.items as item (item.id)}
-          <li class="row">
-            {#if item.dot}
-              <span
-                class="dot"
-                class:pulse={item.tone === 'active'}
-                style:background={toneColor(item.tone)}
-              ></span>
-            {:else if dottedRows}
-              <!-- Keeps the texts aligned with the dotted rows. -->
-              <span class="dot blank"></span>
-            {/if}
-            {#if item.title}<span class="title">{item.title}</span>{/if}
-            {#if item.slider}
-              {@const slider = item.slider}
-              {@const value = held[item.id] ?? slider.value}
-              <input
-                type="range"
-                class="slider"
-                aria-label={item.title}
-                min={slider.min}
-                max={slider.max}
-                step={slider.step}
-                {value}
-                style:--fill="{sliderPercent(slider, value)}%"
-                onpointerdown={() => (held[item.id] = slider.value)}
-                oninput={(e) => {
-                  const next = Number(e.currentTarget.value)
-                  held[item.id] = next
-                  onaction(item.id, `set:${next}`)
-                }}
-                onpointerup={() => delete held[item.id]}
-                onpointercancel={() => delete held[item.id]}
-                onclick={(e) => e.stopPropagation()}
-              />
-            {/if}
-            <span class="label" class:lead={!item.title && !item.slider} class:value={!!item.slider}>
-              {item.label}{item.detail ? ` · ${item.detail}` : ''}
-            </span>
-            {#if item.actions.length > 0}
-              <span class="actions">
-                {#each item.actions as action (action.id)}
-                  {@const ButtonIcon = action.icon ? icons[action.icon] : null}
-                  <button
-                    class="action"
-                    class:text={!ButtonIcon}
-                    title={action.label}
-                    aria-label={action.label}
-                    onclick={(e) => {
-                      // Not an acknowledgement of the whole notch.
-                      e.stopPropagation()
-                      onaction(item.id, action.id)
-                    }}
-                  >
-                    {#if ButtonIcon}
-                      <ButtonIcon size={13} strokeWidth={2.5} />
-                    {:else}
-                      {action.label}
-                    {/if}
-                  </button>
-                {/each}
+          {#if item.layout === 'featured'}
+            <!-- A media player: the picture, then everything stacked. -->
+            <li class="featured" class:dimmed={item.dimmed}>
+              <Cover src={item.image ?? ''} icon={Icon} />
+              <div class="stack">
+                {#if item.title}<span class="title">{item.title}</span>{/if}
+                {#if item.label}<span class="label lead">{item.label}</span>{/if}
+                {#if item.slider || item.detail}
+                  <span class="progress">
+                    {#if item.slider}{@render slider(item)}{/if}
+                    {#if item.detail}<span class="label value">{item.detail}</span>{/if}
+                  </span>
+                {/if}
+                {#if item.actions.length > 0}{@render actions(item, 15)}{/if}
+              </div>
+            </li>
+          {:else}
+            <li class="row" class:dimmed={item.dimmed}>
+              {#if item.image !== null}<Cover src={item.image} icon={Icon} />{/if}
+              {#if item.dot}
+                <span
+                  class="dot"
+                  class:pulse={item.tone === 'active'}
+                  style:background={toneColor(item.tone)}
+                ></span>
+              {:else if dottedRows}
+                <!-- Keeps the texts aligned with the dotted rows. -->
+                <span class="dot blank"></span>
+              {/if}
+              {#if item.title}<span class="title">{item.title}</span>{/if}
+              {#if item.slider}{@render slider(item)}{/if}
+              <span class="label" class:lead={!item.title && !item.slider} class:value={!!item.slider}>
+                {item.label}{item.detail ? ` · ${item.detail}` : ''}
               </span>
-            {/if}
-          </li>
+              {#if item.actions.length > 0}{@render actions(item, 13)}{/if}
+            </li>
+          {/if}
         {/each}
         <!-- A module without items still says how it is (ADR-0009). -->
         {#if section.note}
@@ -205,6 +245,15 @@
     outline: none;
   }
 
+  /* Read-only: a plain bar, no handle. */
+  .slider:disabled {
+    cursor: default;
+  }
+
+  .slider:disabled::-webkit-slider-thumb {
+    visibility: hidden;
+  }
+
   .slider::-webkit-slider-thumb {
     appearance: none;
     width: 12px;
@@ -245,5 +294,61 @@
 
   .action:hover {
     background: var(--notch-button-hover);
+  }
+
+  /* A media player: its height (84 px + the rows' 2 px gap) is
+     FEATURED_HEIGHT in App.svelte. */
+  .featured {
+    display: flex;
+    gap: 12px;
+    min-width: 0;
+    height: 84px;
+    align-items: center;
+  }
+
+  .featured > :global(.cover) {
+    width: 76px;
+    height: 76px;
+    border-radius: 8px;
+  }
+
+  .featured .stack {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .featured .title,
+  .featured .label {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .featured .progress {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    height: 16px;
+  }
+
+  .featured .actions {
+    justify-content: center;
+    gap: 10px;
+    margin-top: 2px;
+  }
+
+  .featured .action {
+    min-width: 28px;
+    height: 26px;
+    border-radius: 13px;
+  }
+
+  /* Paused: the picture and texts fade, the buttons stay clear. */
+  .featured.dimmed > :global(.cover),
+  .featured.dimmed .stack > :not(.actions) {
+    opacity: 0.5;
   }
 </style>

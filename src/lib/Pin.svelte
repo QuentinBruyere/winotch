@@ -1,6 +1,8 @@
 <script lang="ts">
   import Puzzle from '@lucide/svelte/icons/puzzle'
   import type { ModuleUis } from '../modules'
+  import Cover from './Cover.svelte'
+  import Marquee from './Marquee.svelte'
   import Sections from './Sections.svelte'
   import { icons } from './icons'
   import { mostUrgent, ringing, toneColor, type Rect, type Section } from './content'
@@ -16,6 +18,7 @@
     corners,
     open,
     spotlit,
+    ontextreadtime,
     vertical,
     moduleUis,
     measured = $bindable(),
@@ -23,6 +26,7 @@
     onleave,
     onclick,
     onaction,
+    onmenu,
   }: {
     section: Section
     // Where and how big, from App.svelte (it also sets the window region).
@@ -31,6 +35,8 @@
     open: boolean
     // Just changed (the volume keys): its value for a moment, even when quiet.
     spotlit: boolean
+    // How long its compact text needs to be read once (Marquee).
+    ontextreadtime: (module: string, ms: number) => void
     // On the left / right edges of the screen: thin, dots or icon only.
     vertical: boolean
     moduleUis: ModuleUis
@@ -41,9 +47,15 @@
     onleave: () => void
     onclick: () => void
     onaction: (itemId: string, actionId: string) => void
+    // Right click on the pin (its module's id).
+    onmenu: (module: string) => void
   } = $props()
 
   const top = $derived(mostUrgent(section.items))
+  const compactLabel = $derived(top ? (top.compact?.label ?? top.label) : '')
+  // A spotlight shows the text of a quiet item, if it has one: an item with
+  // nothing to say (a media module with nothing playing) keeps its icon.
+  const quiet = $derived(!!top?.quiet && (!spotlit || !compactLabel))
   const dotted = $derived(section.items.filter((i) => i.dot))
   // The item's own icon (the volume's level), else the module's.
   const Icon = $derived(
@@ -76,6 +88,10 @@
   onmouseleave={onleave}
   {onclick}
   onkeydown={(e) => e.key === 'Enter' && onclick()}
+  oncontextmenu={(e) => {
+    e.preventDefault()
+    onmenu(section.module)
+  }}
 >
   {#if open}
     <Sections list={[section]} height={rect.height} {moduleUis} {onaction} />
@@ -106,10 +122,22 @@
           {/each}
         </span>
       {/if}
-      {#if top.quiet && !spotlit}
+      {#if quiet && top.image !== null}
+        <Cover src={top.image} icon={moduleUis[section.module]?.icon ?? Puzzle} dimmed={top.dimmed} />
+      {:else if quiet}
         <span class="module-icon"><Icon size={14} strokeWidth={2.25} /></span>
       {:else}
-        <span class="label">{top.compact?.label ?? top.label}</span>
+        {#if top.image !== null}
+          <Cover src={top.image} icon={moduleUis[section.module]?.icon ?? Puzzle} dimmed={top.dimmed} />
+        {/if}
+        {#if compactLabel}
+          <Marquee
+            text={compactLabel}
+            scroll={top.scroll}
+            dimmed={top.dimmed}
+            onturn={(ms) => ontextreadtime(section.module, ms)}
+          />
+        {/if}
         {#if top.compact?.title}<span class="muted">{top.compact.title}</span>{/if}
       {/if}
     </span>
@@ -150,7 +178,8 @@
     white-space: nowrap;
   }
 
-  .summary .label {
-    overflow: visible;
+  /* A long text (a song title) stops the pin from growing too wide. */
+  .summary :global(.label) {
+    max-width: 180px;
   }
 </style>

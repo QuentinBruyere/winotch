@@ -17,6 +17,7 @@
     type Card,
     type Content,
     type Edge,
+    type Item,
     type Rect,
     type Section,
     type Shape,
@@ -43,6 +44,9 @@
       : { width: 300, height: 36, radius: compactRadius(style) }
   const EXPANDED_WIDTH = 380
   const ROW_HEIGHT = 26
+  // A featured item (media player): its picture's height and the rows' gap.
+  // Matches `.featured` in src/lib/Sections.svelte.
+  const FEATURED_HEIGHT = 86
   // Added by the line between two modules (`.section + .section` in Sections.svelte).
   const SEPARATOR_HEIGHT = 15
   // Depth of the window on the top / bottom edges (`WINDOW_DEPTH` in
@@ -61,8 +65,6 @@
   const PIN_OPEN_WIDTH = 280
   const PIN_VERTICAL_LENGTH = 56
   const ALERT_MS = 4000
-  // How long the closed notch shows a module that asked for it (DF-0013).
-  const SPOTLIGHT_MS = 1500
   // A ringing module's alarm (DF-0009): every few seconds, for a minute at
   // most; its shape keeps pulsing until it is acknowledged.
   const ALARM_EVERY_MS = 2000
@@ -127,11 +129,15 @@
   // Height for some modules: a module without items still takes a row, for
   // its note; a line between two modules.
   function heightOf(sections: Section[]): number {
-    const rows = Math.max(
-      1,
-      sections.reduce((n, s) => n + Math.max(1, s.items.length), 0),
+    const itemHeight = (i: Item) => (i.layout === 'featured' ? FEATURED_HEIGHT : ROW_HEIGHT)
+    const content = sections.reduce(
+      (h, s) =>
+        h + (s.items.length === 0 ? ROW_HEIGHT : s.items.reduce((n, i) => n + itemHeight(i), 0)),
+      0,
     )
-    return 18 + rows * ROW_HEIGHT + Math.max(0, sections.length - 1) * SEPARATOR_HEIGHT
+    return (
+      18 + Math.max(ROW_HEIGHT, content) + Math.max(0, sections.length - 1) * SEPARATOR_HEIGHT
+    )
   }
 
   // Shrinks the tallest cards until the stack fits in the window; their
@@ -395,8 +401,32 @@
     void invoke('end_drag')
   }
 
+  // Right click on a module: pin or unpin it (a native menu, context_menu.rs).
+  function moduleMenu(module: string) {
+    if (!status.movable) void invoke('module_menu', { module })
+  }
+
   let alertTimer: ReturnType<typeof setTimeout> | undefined
   let spotlightTimer: ReturnType<typeof setTimeout> | undefined
+  let spotlightSince = 0
+  let spotlightMs = 0
+  // When each module's compact text will have been read once, from its
+  // Marquee's slide start (now if it fits). Kept for every module,
+  // spotlighted or not: the new text may arrive just before or after the
+  // spotlight.
+  const readUntil: Record<string, number> = {}
+  // A spotlight lasts its own time, or until its text has scrolled to its
+  // end and faded out, if later (DF-0017).
+  function endSpotlight() {
+    if (spotlight === null) return
+    const end = Math.max(spotlightSince + spotlightMs, readUntil[spotlight] ?? 0)
+    clearTimeout(spotlightTimer)
+    spotlightTimer = setTimeout(() => (spotlight = null), Math.max(0, end - Date.now()))
+  }
+  function textReadTime(module: string, ms: number) {
+    readUntil[module] = Date.now() + ms
+    if (spotlight === module) endSpotlight()
+  }
   let pinAlertTimer: ReturnType<typeof setTimeout> | undefined
 
   function onContent(next: Content) {
@@ -474,10 +504,12 @@
       listen<Status>('status-changed', (e) => (status = e.payload)),
       // Past the safety margin of an open shape (see `watch`).
       listen('pointer-left', pointerLeft),
-      listen<string>('spotlight', (e) => {
-        spotlight = e.payload
-        clearTimeout(spotlightTimer)
-        spotlightTimer = setTimeout(() => (spotlight = null), SPOTLIGHT_MS)
+      // A module shown for a moment in the closed notch (DF-0013, DF-0017).
+      listen<{ module: string; ms: number }>('spotlight', (e) => {
+        spotlight = e.payload.module
+        spotlightSince = Date.now()
+        spotlightMs = e.payload.ms
+        endSpotlight()
       }),
       listen<string>('notice', (e) => {
         notice = e.payload
@@ -513,6 +545,7 @@
   {moduleUis}
   {notice}
   {spotlight}
+  ontextreadtime={textReadTime}
   edge={status.edge}
   style={status.style}
   {expanded}
@@ -524,6 +557,7 @@
   onpointerup={endDrag}
   onenter={enter}
   onleave={leave}
+  onmenu={moduleMenu}
 />
 
 <!-- Pinned modules, next to the notch (DF-0012). -->
@@ -535,6 +569,7 @@
       corners={corners(status.edge, pin.radius, attached)}
       open={pin.open}
       spotlit={spotlight === pin.section.module}
+      ontextreadtime={textReadTime}
       {vertical}
       {moduleUis}
       bind:measured={pinWidths[pin.section.module]}
@@ -542,6 +577,7 @@
       onleave={() => leavePin(pin.section.module)}
       onclick={() => !status.movable && invoke('acknowledge')}
       onaction={(item, action) => void invoke('item_action', { item, action })}
+      onmenu={moduleMenu}
     />
   {/each}
 </div>

@@ -2,6 +2,8 @@ import type { LucideProps } from '@lucide/svelte'
 import Pause from '@lucide/svelte/icons/pause'
 import Play from '@lucide/svelte/icons/play'
 import RotateCcw from '@lucide/svelte/icons/rotate-ccw'
+import SkipBack from '@lucide/svelte/icons/skip-back'
+import SkipForward from '@lucide/svelte/icons/skip-forward'
 import Volume from '@lucide/svelte/icons/volume'
 import Volume1 from '@lucide/svelte/icons/volume-1'
 import Volume2 from '@lucide/svelte/icons/volume-2'
@@ -18,4 +20,6 @@ export const icons: Record<Icon, Component<LucideProps>> = {
   volume_medium: Volume1,
   volume_high: Volume2,
   muted: VolumeX,
+  previous: SkipBack,
+  next: SkipForward,
 }

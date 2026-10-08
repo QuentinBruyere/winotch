@@ -54,6 +54,8 @@
   "clock.show.time": "Time",
   "clock.show.time_and_date": "Time and date",
   "item.paused": "paused",
+  "notch.menu.pin": "Pin",
+  "notch.menu.unpin": "Unpin",
   "notch.no_module": "No module enabled",
   "screen.label": "Screen {number} · {width} × {height}",
   "screen.primary": "{screen} · primary",

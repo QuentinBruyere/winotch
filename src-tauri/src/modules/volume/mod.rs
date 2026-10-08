@@ -11,6 +11,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use crate::module::{Action, Host, Icon, Item, Module, Slider};
 use crate::t;
 
+/// How long the closed notch shows a volume changed elsewhere.
+const SPOTLIGHT: std::time::Duration = std::time::Duration::from_millis(1500);
+
 /// The output's volume, as shown.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct Level {
@@ -51,7 +54,7 @@ impl Inner {
         if let Some(host) = self.host.get() {
             host.refresh();
             if external && level.is_some() {
-                host.spotlight();
+                host.spotlight(SPOTLIGHT);
             }
         }
     }
@@ -157,6 +160,7 @@ fn item(level: Level) -> Item {
             min: 0.0,
             max: 100.0,
             step: 1.0,
+            readonly: false,
         }),
         actions: vec![Action::icon("mute", icon, &tooltip)],
         // The compact views show the icon, and the value only for a moment

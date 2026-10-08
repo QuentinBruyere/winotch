@@ -54,6 +54,8 @@
   "clock.show.time": "Uhrzeit",
   "clock.show.time_and_date": "Uhrzeit und Datum",
   "item.paused": "pausiert",
+  "notch.menu.pin": "Anheften",
+  "notch.menu.unpin": "Lösen",
   "notch.no_module": "Kein Modul aktiv",
   "screen.label": "Bildschirm {number} · {width} × {height}",
   "screen.primary": "{screen} · Hauptbildschirm",

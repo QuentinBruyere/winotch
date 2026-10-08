@@ -45,6 +45,10 @@ pub enum Icon {
     VolumeHigh,
     /// A crossed-out speaker: no sound.
     Muted,
+    /// Back to the previous track.
+    Previous,
+    /// On to the next track.
+    Next,
 }
 
 /// A slider in an item's row of the open notch (e.g. the volume). Moving it
@@ -56,6 +60,9 @@ pub struct Slider {
     pub min: f64,
     pub max: f64,
     pub step: f64,
+    /// Shows the value only, it cannot be moved (e.g. the progress of a
+    /// track the app does not let seek).
+    pub readonly: bool,
 }
 
 /// A button at the end of an item's row in the open notch (e.g. start a
@@ -109,7 +116,9 @@ pub struct Item {
     /// A slider shown in the open notch, between the title and the label.
     pub slider: Option<Slider>,
     /// Nothing worth showing yet (e.g. a stopwatch at zero): the compact
-    /// views (closed notch, pin) show the module's icon instead of the label.
+    /// views (closed notch, pin) show the module's icon instead of the label,
+    /// or the item's `image` if it has one. A spotlight (`Host::spotlight`)
+    /// shows the label for a moment.
     pub quiet: bool,
     /// Replaces the module's icon in the compact views (e.g. the volume's
     /// level).
@@ -120,6 +129,30 @@ pub struct Item {
     /// What the compact views (closed notch, pin) write instead of the label
     /// and title, e.g. only the time when the open notch shows the date too.
     pub compact: Option<Compact>,
+    /// A small square picture before the texts, everywhere the item shows
+    /// (e.g. an album cover): a `data:` URL, never fetched from the network.
+    /// An empty string keeps the place without a picture (a track without
+    /// cover): the module's icon stands in, as for a picture that fails.
+    pub image: Option<String>,
+    /// Shown faded, e.g. a paused track.
+    pub dimmed: bool,
+    /// In the compact views, a text too long for its place scrolls instead
+    /// of being cut (DF-0017).
+    pub scroll: bool,
+    /// How the open notch draws the item.
+    pub layout: Layout,
+}
+
+/// How the open notch draws an item.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Layout {
+    /// One line: title, slider, label · detail, buttons.
+    #[default]
+    Row,
+    /// A large picture on the left; on its right, stacked: the title, the
+    /// label, the slider with the detail, the buttons (a media player).
+    Featured,
 }
 
 /// An item's texts in the compact views (`Item::compact`).
@@ -201,10 +234,14 @@ impl Host {
         crate::settings::changed(&self.app);
     }
 
-    /// Something changed that the user just did elsewhere (e.g. the volume
-    /// keys): the closed notch shows this module briefly (DF-0013).
-    pub fn spotlight(&self) {
-        let _ = self.app.emit("spotlight", self.id);
+    /// Something changed that the user did elsewhere (the volume keys, the
+    /// next track): the closed notch shows this module for `duration`
+    /// (DF-0013, DF-0017).
+    pub fn spotlight(&self, duration: std::time::Duration) {
+        let _ = self.app.emit(
+            "spotlight",
+            serde_json::json!({ "module": self.id, "ms": duration.as_millis() as u64 }),
+        );
     }
 
     /// Short message shown in the notch for a few seconds.
@@ -289,6 +326,17 @@ pub(crate) fn is_enabled(module: &dyn Module, config: &config::Config) -> bool {
 
 /// The modules in the user's order: those listed in `order` first, the
 /// others (e.g. newly installed ones) after, in their declaration order.
+/// The first enabled module in the user's order: the notch itself, which
+/// cannot be pinned (DF-0012).
+pub(crate) fn first_enabled<'a>(
+    modules: &'a [Box<dyn Module>],
+    config: &config::Config,
+) -> Option<&'a dyn Module> {
+    ordered(modules, &config.module_order)
+        .into_iter()
+        .find(|m| is_enabled(*m, config))
+}
+
 pub(crate) fn ordered<'a>(modules: &'a [Box<dyn Module>], order: &[String]) -> Vec<&'a dyn Module> {
     let mut sorted: Vec<&dyn Module> = modules.iter().map(AsRef::as_ref).collect();
     // Stable sort: unlisted modules keep their relative order, at the end.

@@ -54,6 +54,8 @@
   "clock.show.time": "Hora",
   "clock.show.time_and_date": "Hora y fecha",
   "item.paused": "en pausa",
+  "notch.menu.pin": "Anclar",
+  "notch.menu.unpin": "Desanclar",
   "notch.no_module": "Ningún módulo activo",
   "screen.label": "Pantalla {number} · {width} × {height}",
   "screen.primary": "{screen} · principal",

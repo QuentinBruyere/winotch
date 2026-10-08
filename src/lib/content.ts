@@ -13,6 +13,8 @@ export type Icon =
   | 'volume_medium'
   | 'volume_high'
   | 'muted'
+  | 'previous'
+  | 'next'
 
 // Mirrors `Action` in src-tauri/src/module.rs: a button at the end of a row.
 export interface Action {
@@ -28,6 +30,8 @@ export interface Slider {
   min: number
   max: number
   step: number
+  // Shows the value only (a progress the app does not let seek).
+  readonly: boolean
 }
 
 // Where a slider's value sits, from 0 to 100.
@@ -50,6 +54,8 @@ export interface Item {
   // A slider in the open notch, between the title and the label.
   slider: Slider | null
   // Nothing worth showing yet: compact views show the module's icon instead.
+  // Nothing worth showing: compact views show the image, else the module's
+  // icon; a spotlight shows the label for a moment.
   quiet: boolean
   // Replaces the module's icon in the compact views (the volume's level).
   icon: Icon | null
@@ -58,6 +64,16 @@ export interface Item {
   // The texts of the compact views (closed notch, pin), if not the label
   // and title (the clock's own choice).
   compact: { label: string; title: string } | null
+  // A small square picture before the texts (an album cover), a data: URL;
+  // empty, or if it fails, the module's icon stands in (Cover.svelte).
+  image: string | null
+  // Shown faded (a paused track).
+  dimmed: boolean
+  // Compact views: a text too long scrolls instead of being cut (Marquee).
+  scroll: boolean
+  // Mirrors `Layout` in src-tauri/src/module.rs: one line, or a large
+  // picture with the texts, slider and buttons stacked on its right.
+  layout: 'row' | 'featured'
 }
 
 // Mirrors `Section` in src-tauri/src/module.rs: one module's part of the notch.

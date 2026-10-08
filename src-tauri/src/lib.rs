@@ -1,4 +1,5 @@
 mod config;
+mod context_menu;
 pub mod i18n;
 pub mod module;
 pub mod modules;
@@ -204,7 +205,8 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_appearance,
             settings::set_language,
             settings::set_module_pin,
-            settings::module_call
+            settings::module_call,
+            context_menu::module_menu
         ])
         .setup(move |app| {
             if cfg!(debug_assertions) {
@@ -251,6 +253,8 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             notch::spawn_watcher(app.handle().clone());
 
             tray::create(app.handle())?;
+            // The right-click menu of the modules (the tray has its own).
+            app.on_menu_event(|app, event| context_menu::handle(app, &event));
             Ok(())
         })
         .on_window_event(|window, event| {

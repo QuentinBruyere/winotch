@@ -113,6 +113,29 @@ html[data-window='notch'] {
     opacity: 0.55;
   }
 
+  /* An item's picture (an album cover), as tall as an icon row. */
+  & .cover {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    border-radius: 4px;
+    object-fit: cover;
+  }
+
+  /* No picture: the module's icon on a faint square. */
+  & .cover.placeholder {
+    display: grid;
+    place-items: center;
+    box-sizing: border-box;
+    background: var(--notch-button);
+  }
+
+  /* A faded item (a paused track); its buttons stay clear. */
+  & .dimmed:not(li),
+  & li.dimmed > :not(.actions) {
+    opacity: 0.5;
+  }
+
   /* A ringing module (a timer whose time is up) pulses its shape's border. */
   & .ringing {
     animation: ringing 1s ease-in-out infinite;

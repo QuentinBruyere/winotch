@@ -80,10 +80,8 @@ pub fn current(app: &AppHandle) -> Settings {
     let state = app.state::<AppState>();
     let config = state.config.lock().unwrap().clone();
     // The first enabled module is the notch itself: it cannot be pinned.
-    let first_enabled = crate::module::ordered(&state.modules, &config.module_order)
-        .into_iter()
-        .find(|m| crate::module::is_enabled(*m, &config))
-        .map(|m| m.id().to_string());
+    let first_enabled =
+        crate::module::first_enabled(&state.modules, &config).map(|m| m.id().to_string());
     Settings {
         sound_enabled: config.sound_enabled,
         hide_in_fullscreen: config.hide_in_fullscreen,
