@@ -296,7 +296,7 @@
     display: block;
     overflow: hidden;
     padding: 0 16px;
-    background: var(--notch-bg);
+    background: var(--notch-fill);
     outline: 1px solid var(--notch-border);
     outline-offset: -1px;
     transition:

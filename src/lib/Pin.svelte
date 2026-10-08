@@ -151,7 +151,7 @@
     box-sizing: border-box;
     overflow: hidden;
     pointer-events: auto;
-    background: var(--notch-bg);
+    background: var(--notch-fill);
     outline: 1px solid var(--notch-border);
     outline-offset: -1px;
     transition:

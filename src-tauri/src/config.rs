@@ -47,7 +47,16 @@ pub struct Config {
     pub auto_hide: bool,
     /// How long after the cursor left before it tucks, in ms (0 to 5000).
     pub auto_hide_delay_ms: u32,
+    /// The notch's own color, `#rrggbb` (DF-0019); `None` = the theme's.
+    pub notch_color: Option<String>,
+    /// How opaque the notch's background is, 0 to 100 (DF-0019).
+    pub notch_opacity: u8,
+    /// Grain over the notch's background, 0 (none) to `MAX_GRAIN` (DF-0019).
+    pub notch_grain: u8,
 }
+
+/// The strongest grain, in %: past it, it hides the notch's color and texts.
+pub const MAX_GRAIN: u8 = 20;
 
 /// Light or dark theme of every window (DF-0014).
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -131,6 +140,9 @@ impl Default for Config {
             language: None,
             auto_hide: false,
             auto_hide_delay_ms: 1000,
+            notch_color: None,
+            notch_opacity: 100,
+            notch_grain: 0,
         }
     }
 }
@@ -248,5 +260,25 @@ mod tests {
         assert!(config.modules["claude-code"].settings.is_empty());
         assert!(config.module_enabled("other", true));
         assert!(!config.module_enabled("other", false));
+    }
+}
+
+/// A color as the settings save it: `#rrggbb`, lowercase.
+pub fn color(value: &str) -> Option<String> {
+    let hex = value.strip_prefix('#')?;
+    (hex.len() == 6 && hex.chars().all(|c| c.is_ascii_hexdigit()))
+        .then(|| format!("#{}", hex.to_ascii_lowercase()))
+}
+
+#[cfg(test)]
+mod color_tests {
+    use super::color;
+
+    #[test]
+    fn only_six_digit_hex_colors_are_kept() {
+        assert_eq!(color("#1E3A8A").as_deref(), Some("#1e3a8a"));
+        assert_eq!(color("1e3a8a"), None);
+        assert_eq!(color("#fff"), None);
+        assert_eq!(color("#12345g"), None);
     }
 }

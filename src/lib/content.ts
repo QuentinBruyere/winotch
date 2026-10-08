@@ -179,6 +179,11 @@ export interface Status {
   // Tucks into the edge when unused, and after how long (DF-0018).
   autoHide: boolean
   autoHideDelayMs: number
+  // The notch's own color, #rrggbb (DF-0019); null = the theme's.
+  notchColor: string | null
+  // How opaque its background is, and how much grain on it, 0 to 100.
+  notchOpacity: number
+  notchGrain: number
   // Center of the compact notch along the edge, from the start of the window,
   // in logical pixels; null = the middle of the window (DF-0006)
   anchor: number | null

@@ -4,7 +4,7 @@
   import Notch from './lib/Notch.svelte'
   import Pin from './lib/Pin.svelte'
   import { setLanguage } from './lib/i18n.svelte'
-  import { applyAppearance } from './lib/theme'
+  import { applyAppearance, setNotchColor } from './lib/theme'
   import {
     allItems,
     around,
@@ -85,8 +85,12 @@
     language: 'en',
     autoHide: false,
     autoHideDelayMs: 1000,
+    notchColor: null,
+    notchOpacity: 100,
+    notchGrain: 0,
     anchor: null,
   })
+  $effect(() => setNotchColor(status.notchColor, status.notchOpacity, status.notchGrain))
   $effect(() => applyAppearance(status.appearance))
   $effect(() => setLanguage(status.language))
   let notice = $state<string | null>(null)
@@ -589,6 +593,11 @@
         spotlightMs = e.payload.ms
         endSpotlight()
       }),
+      // The settings' opacity and grain sliders, live while they move;
+      // saved on release, which brings them back through the status.
+      listen<{ opacity: number; grain: number }>('notch-look-preview', (e) =>
+        setNotchColor(status.notchColor, e.payload.opacity, e.payload.grain),
+      ),
       listen<string>('notice', (e) => {
         notice = e.payload
         clearTimeout(noticeTimer)

@@ -1,14 +1,15 @@
 <script lang="ts">
   import { getVersion } from '@tauri-apps/api/app'
   import { invoke } from '@tauri-apps/api/core'
-  import { listen } from '@tauri-apps/api/event'
+  import { emitTo, listen } from '@tauri-apps/api/event'
   import GripVertical from '@lucide/svelte/icons/grip-vertical'
   import PinIcon from '@lucide/svelte/icons/pin'
   import Puzzle from '@lucide/svelte/icons/puzzle'
+  import Palette from '@lucide/svelte/icons/palette'
   import SettingsIcon from '@lucide/svelte/icons/settings'
   import { flip } from 'svelte/animate'
   import { setLanguage, t, type Key } from '../lib/i18n.svelte'
-  import { applyAppearance, type Appearance } from '../lib/theme'
+  import { applyAppearance, MAX_GRAIN, type Appearance } from '../lib/theme'
   import type { ModuleUis } from '../modules'
   import './settings.css'
 
@@ -41,6 +42,9 @@
     appearance: Appearance
     autoHide: boolean
     autoHideDelayMs: number
+    notchColor: string | null
+    notchOpacity: number
+    notchGrain: number
     language: string | null
     languages: [string, string][]
     // The language shown, the system's resolved (ADR-0012).
@@ -74,6 +78,17 @@
     { value: 'dark', key: 'settings.appearance.dark' },
   ]
 
+  // Ready-made notch colors (DF-0019); any other through the picker.
+  const notchColors = [
+    '#1e3a8a',
+    '#4c1d95',
+    '#9f1239',
+    '#166534',
+    '#c2410c',
+    '#facc15',
+    '#ffffff',
+  ]
+
   const speedChoices: { value: NotchSpeed; key: Key }[] = [
     { value: 'slow', key: 'settings.speed.slow' },
     { value: 'normal', key: 'settings.speed.normal' },
@@ -95,6 +110,20 @@
   $effect(() => {
     if (settings) gap = settings.gap
   })
+  // Background opacity and grain, shown on the notch while the sliders move,
+  // saved on release.
+  let opacity = $state(100)
+  let grain = $state(0)
+  $effect(() => {
+    if (settings) {
+      opacity = settings.notchOpacity
+      grain = Math.min(settings.notchGrain, MAX_GRAIN)
+    }
+  })
+  function previewNotchLook(look: { opacity: number; grain: number }) {
+    void emitTo('notch', 'notch-look-preview', look)
+  }
+
   // Auto-hide delay, in seconds on the slider (DF-0018).
   const HIDE_DELAY_DEFAULT = 1
   const HIDE_DELAY_MAX = 5
@@ -421,6 +450,79 @@
               {/each}
             </div>
           </div>
+          <div class="stack separated">
+            <div>
+              <div class="label">{t('settings.color')}</div>
+            </div>
+            <div class="swatches" role="radiogroup" aria-label={t('settings.color')}>
+              <button
+                class="swatch default"
+                role="radio"
+                aria-checked={settings.notchColor === null}
+                class:selected={settings.notchColor === null}
+                onclick={() => run('set_notch_color', { color: null })}
+              >
+                {t('settings.default')}
+              </button>
+              {#each notchColors as color (color)}
+                <button
+                  class="swatch"
+                  role="radio"
+                  aria-checked={settings.notchColor === color}
+                  aria-label={color}
+                  class:selected={settings.notchColor === color}
+                  style:background={color}
+                  onclick={() => run('set_notch_color', { color })}
+                ></button>
+              {/each}
+              <!-- Any color: the system's picker. -->
+              <label
+                class="swatch picker"
+                class:selected={settings.notchColor !== null && !notchColors.includes(settings.notchColor)}
+                style:background={settings.notchColor !== null && !notchColors.includes(settings.notchColor)
+                  ? settings.notchColor
+                  : null}
+                title={t('settings.color.custom')}
+              >
+                <input
+                  type="color"
+                  value={settings.notchColor ?? '#000000'}
+                  onchange={(e) => run('set_notch_color', { color: e.currentTarget.value })}
+                />
+                <Palette size={14} />
+              </label>
+            </div>
+          </div>
+          <label class="row separated">
+            <div>
+              <div class="label">{t('settings.opacity')}</div>
+              <div class="hint">{t('settings.percent', { value: opacity })}</div>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="5"
+              bind:value={opacity}
+              oninput={(e) => previewNotchLook({ opacity: e.currentTarget.valueAsNumber, grain })}
+              onchange={() => run('set_notch_opacity', { opacity })}
+            />
+          </label>
+          <label class="row">
+            <div>
+              <div class="label">{t('settings.grain')}</div>
+              <div class="hint">{t('settings.percent', { value: grain })}</div>
+            </div>
+            <input
+              type="range"
+              min="0"
+              max={MAX_GRAIN}
+              step="5"
+              bind:value={grain}
+              oninput={(e) => previewNotchLook({ opacity, grain: e.currentTarget.valueAsNumber })}
+              onchange={() => run('set_notch_grain', { grain })}
+            />
+          </label>
           <div class="stack separated">
             <div>
               <div class="label">{t('settings.style')}</div>

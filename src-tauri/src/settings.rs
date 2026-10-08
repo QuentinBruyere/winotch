@@ -69,6 +69,9 @@ pub struct Settings {
     appearance: crate::config::Appearance,
     auto_hide: bool,
     auto_hide_delay_ms: u32,
+    notch_color: Option<String>,
+    notch_opacity: u8,
+    notch_grain: u8,
     /// Chosen language code, `None` = the system's (ADR-0012).
     language: Option<String>,
     /// Translated languages: code and own name.
@@ -118,6 +121,9 @@ pub fn current(app: &AppHandle) -> Settings {
         appearance: config.appearance,
         auto_hide: config.auto_hide,
         auto_hide_delay_ms: config.auto_hide_delay_ms,
+        notch_color: config.notch_color.clone(),
+        notch_opacity: config.notch_opacity,
+        notch_grain: config.notch_grain,
         language: config.language.clone(),
         languages: crate::i18n::LANGUAGES.to_vec(),
         shown_language: crate::i18n::language(),
@@ -417,6 +423,34 @@ pub fn set_auto_hide(app: AppHandle, enabled: bool) {
 #[tauri::command]
 pub fn set_auto_hide_delay(app: AppHandle, ms: u32) {
     update_config(&app, |c| c.auto_hide_delay_ms = ms.min(5000));
+    changed(&app);
+}
+
+/// The notch's own color, `#rrggbb`, or `None` for the theme's (DF-0019).
+#[tauri::command]
+pub fn set_notch_color(app: AppHandle, color: Option<String>) -> Result<(), String> {
+    let color = match color {
+        Some(value) => {
+            Some(config::color(&value).ok_or_else(|| crate::t!("settings.color.invalid"))?)
+        }
+        None => None,
+    };
+    update_config(&app, |c| c.notch_color = color);
+    changed(&app);
+    Ok(())
+}
+
+/// How opaque the notch's background is, 0 to 100 (DF-0019).
+#[tauri::command]
+pub fn set_notch_opacity(app: AppHandle, opacity: u8) {
+    update_config(&app, |c| c.notch_opacity = opacity.min(100));
+    changed(&app);
+}
+
+/// Grain over the notch's background, 0 (none) to `config::MAX_GRAIN` (DF-0019).
+#[tauri::command]
+pub fn set_notch_grain(app: AppHandle, grain: u8) {
+    update_config(&app, |c| c.notch_grain = grain.min(config::MAX_GRAIN));
     changed(&app);
 }
 

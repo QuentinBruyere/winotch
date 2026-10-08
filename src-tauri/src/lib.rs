@@ -52,6 +52,10 @@ pub struct Status {
     /// Tucks into the edge when unused, and after how long (DF-0018).
     auto_hide: bool,
     auto_hide_delay_ms: u32,
+    /// The notch's own color (DF-0019); `None` = the theme's.
+    notch_color: Option<String>,
+    notch_opacity: u8,
+    notch_grain: u8,
     /// Center of the compact notch along the edge, from the start of the
     /// window, in logical pixels: every shape is centered on it, then kept
     /// inside the window. `None` = the middle of the window.
@@ -149,6 +153,9 @@ fn status(state: &AppState) -> Status {
         language: i18n::language(),
         auto_hide: config.auto_hide,
         auto_hide_delay_ms: config.auto_hide_delay_ms,
+        notch_color: config.notch_color.clone(),
+        notch_opacity: config.notch_opacity,
+        notch_grain: config.notch_grain,
         anchor: notch::anchor(),
     }
 }
@@ -217,6 +224,9 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             settings::set_language,
             settings::set_auto_hide,
             settings::set_auto_hide_delay,
+            settings::set_notch_color,
+            settings::set_notch_opacity,
+            settings::set_notch_grain,
             set_tucked,
             settings::set_module_pin,
             settings::module_call,

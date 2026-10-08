@@ -1,4 +1,5 @@
-/* Dark by default; `data-theme` comes from src/lib/theme.ts (DF-0014). */
+/* Dark by default; `data-notch` comes from src/lib/theme.ts: the theme's,
+   or the contrast of the notch's own color (DF-0014, DF-0019). */
 :root {
   --notch-bg: #000;
   --notch-fg: #f2f2f2;
@@ -11,6 +12,12 @@
   --notch-button-hover: rgb(255 255 255 / 0.25);
   --notch-outline: rgb(255 255 255 / 0.35);
   --notch-radius: 14px;
+  /* What the shapes are painted with: the background at the chosen opacity
+     (DF-0019), set by src/lib/theme.ts. */
+  --notch-opacity: 100%;
+  --notch-fill: color-mix(in srgb, var(--notch-bg) var(--notch-opacity), transparent);
+  /* Grain over the shapes (DF-0019): a fixed noise, at this opacity (0 = none). */
+  --notch-grain: 0;
 
   --tone-neutral: #8a8a8a;
   --tone-active: #c8c8c8;
@@ -24,7 +31,7 @@
   color: var(--notch-fg);
 }
 
-:root[data-theme='light'] {
+:root[data-notch='light'] {
   --notch-bg: #f2f2f4;
   --notch-fg: #1c1c1e;
   --notch-border: rgb(0 0 0 / 0.14);
@@ -134,6 +141,21 @@ html[data-window='notch'] {
   & .dimmed:not(li),
   & li.dimmed > :not(.actions) {
     opacity: 0.5;
+  }
+
+  /* Grain (DF-0019): a fixed noise painted over the shape, specks of the text
+     color cut out by a noise mask (a blend mode would vanish on a black
+     notch); it lets the cursor through. */
+  & .notch::after,
+  & .pin::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    opacity: var(--notch-grain);
+    background: var(--notch-fg);
+    mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='matrix' values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 3 0 0 0 -1.2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   }
 
   /* A ringing module (a timer whose time is up) pulses its shape's border. */
