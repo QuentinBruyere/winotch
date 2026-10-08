@@ -23,3 +23,7 @@ export const icons: Record<Icon, Component<LucideProps>> = {
   previous: SkipBack,
   next: SkipForward,
 }
+
+// The icons drawn filled on buttons (closed shapes: play, pause, skip); the
+// others stay outlined.
+export const filled: ReadonlySet<Icon> = new Set<Icon>(['play', 'pause', 'previous', 'next'])

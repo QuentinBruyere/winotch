@@ -3,7 +3,7 @@
   import type { ModuleUis } from '../modules'
   import Cover from './Cover.svelte'
   import { sliderPercent, toneColor, type Item, type Section } from './content'
-  import { icons } from './icons'
+  import { filled, icons } from './icons'
 
   // The modules shown in an open card or pin, one part each, its icon first
   // (DF-0011).
@@ -69,6 +69,10 @@
   <span class="actions">
     {#each item.actions as action (action.id)}
       {@const ButtonIcon = action.icon ? icons[action.icon] : null}
+      <!-- Filled icons: a thin stroke (it rounds their corners and draws the
+           skip icons' bar) and smaller, or they look heavy; an even size in
+           the even-sized buttons, so they sit on whole pixels, centered. -->
+      {@const full = action.icon !== null && filled.has(action.icon)}
       <button
         class="action"
         class:text={!ButtonIcon}
@@ -81,7 +85,11 @@
         }}
       >
         {#if ButtonIcon}
-          <ButtonIcon {size} strokeWidth={2.5} />
+          <ButtonIcon
+            size={full ? size - 3 : size}
+            fill={full ? 'currentColor' : 'none'}
+            strokeWidth={full ? 1.5 : 2.5}
+          />
         {:else}
           {action.label}
         {/if}
@@ -343,13 +351,13 @@
   .featured .actions {
     justify-content: center;
     gap: 10px;
-    margin-top: 2px;
   }
 
+  /* Square with rounded corners, like the other buttons, only larger. */
   .featured .action {
     min-width: 28px;
-    height: 26px;
-    border-radius: 13px;
+    height: 28px;
+    border-radius: 8px;
   }
 
   /* Paused: the picture and texts fade, the buttons stay clear. */
