@@ -30,6 +30,11 @@ import {
 // |           |                         | right                                         |
 // | success   | ★ two hearts float up   | still, ★ content squint                       |
 // | error     | ★ fur bristles, hisses  | ★ ears flat, grumpy squint, tail flicks       |
+//
+// Moods (the Companion module, DF-0024): awake and calm by day (idle,
+// ★ grooms), dances with notes (★ tail
+// swinging), runs on the spot, watches you, petted (hearts), ★ a cat's
+// stretch with a yawn; alarm = attention, sleep = neutral.
 
 const WIDTH = 24
 const HEIGHT = 16
@@ -256,6 +261,51 @@ const hearts = (step: number) => [
   ...(step >= 2 ? [layer(HEART, 19, 8 - step)] : []),
 ]
 
+// --- Moods (the Companion module, DF-0024) ---
+
+const NOTE = ['.##', '.#.', '##.']
+const note = (x: number, y: number) => layer(NOTE, x, y)
+// Speed lines behind a runner.
+const lines = (y: number) => [layer(['###', '...', '.##'], 0, y)]
+
+// Dances: head bobbing, tail swinging, eyes half shut, notes around.
+const dance = times(
+  [
+    ...hold(pose({ dy: -1, tail: 'up', eyes: 'half', extra: [note(2, 4)] }), 2),
+    ...hold(pose({ tail: 'mid', eyes: 'half', extra: [note(2, 2)] }), 2),
+    ...hold(pose({ dy: -1, tail: 'down', eyes: 'half', extra: [note(20, 4)] }), 2),
+    ...hold(pose({ tail: 'mid', eyes: 'half', extra: [note(20, 2)] }), 2),
+  ],
+  2,
+)
+// Runs on the spot: bobbing, paws swapping, tail streaming.
+const run = times(
+  [
+    pose({ look: [1, 0], tail: 'down', paws: 'leftDown', extra: lines(9) }),
+    pose({ dy: -1, look: [1, 0], tail: 'mid', paws: 'rightDown', extra: lines(10) }),
+  ],
+  4,
+)
+// Awake, looking at you, its tail swishing.
+const watching = [
+  ...hold(rest, 8),
+  ...hold(pose({ tail: 'mid' }), 2),
+  ...hold(pose({ tail: 'down' }), 2),
+  ...hold(pose({ tail: 'mid' }), 2),
+  ...slowBlink,
+  ...hold(rest, 4),
+]
+// Petted: eyes shut, hearts rising.
+const petted = Array.from({ length: 8 }, (_, step) => pose({ eyes: 'closed', extra: hearts(step) }))
+// A cat's stretch: low in front, tail up, a yawn, then a slow blink.
+const stretching = [
+  rest,
+  ...hold(pose({ dy: 2, tail: 'up', mouth: true, eyes: 'closed' }), 4),
+  pose({ dy: 1, tail: 'up' }),
+  rest,
+  ...slowBlink,
+]
+
 export const miso: Companion = {
   width: WIDTH,
   height: HEIGHT,
@@ -332,5 +382,36 @@ export const miso: Companion = {
         ...hold(pose({ head: HEAD_FLAT, eyes: 'half', tail: 'mid' }), 2),
       ],
     },
+  },
+  moods: {
+    // A quiet day: its scenes in a random order (grooming, a ball of yarn,
+    // watching, a nap as a loaf…), a calm pause before each.
+    idle: {
+      fps: 8,
+      frames: [...hold(rest, 20), ...slowBlink, ...hold(rest, 6)],
+      scenes: [
+        swish,
+        groom,
+        chase,
+        [
+          pose({ eyes: 'half' }),
+          ...times(
+            [
+              ...hold(loaf([]), 4),
+              ...hold(loaf([layer(ZZ, 18, 5)]), 4),
+              ...hold(loaf([layer(ZZ, 19, 2)]), 4),
+            ],
+            3,
+          ),
+          ...slowBlink,
+        ],
+        watch,
+      ],
+    },
+    dance: { fps: 8, frames: dance },
+    run: { fps: 8, frames: run },
+    watch: { fps: 8, frames: watching },
+    petted: { fps: 8, intro: petted, frames: [pose({ eyes: 'half' })] },
+    stretch: { fps: 8, intro: stretching, frames: [rest] },
   },
 }

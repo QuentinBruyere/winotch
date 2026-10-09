@@ -216,7 +216,7 @@ impl Module for ClaudeCode {
             return;
         };
         if let Some(id) = action.strip_prefix(COMPANION) {
-            if !companion::BUILT_IN.contains(&id) {
+            if !companion::exists(id) {
                 return;
             }
             inner.update_settings(|s| {
@@ -391,11 +391,13 @@ fn companion_menu(current: Option<&str>) -> ItemMenu {
         id: DOT.into(),
         label: crate::t!("claude-code.menu.dot"),
         checked: current.is_none(),
+        ..MenuChoice::default()
     }];
-    choices.extend(companion::BUILT_IN.iter().map(|id| MenuChoice {
+    choices.extend(companion::all().into_iter().map(|id| MenuChoice {
         id: format!("{COMPANION}{id}"),
-        label: companion::name(id),
-        checked: current == Some(*id),
+        label: companion::name(&id),
+        checked: current == Some(id.as_str()),
+        ..MenuChoice::default()
     }));
     ItemMenu {
         title: crate::t!("claude-code.menu.companion"),
@@ -409,11 +411,13 @@ fn color_menu(current: Option<&str>) -> ItemMenu {
         id: STATE_COLOR.into(),
         label: crate::t!("claude-code.menu.default_color"),
         checked: current.is_none(),
+        ..MenuChoice::default()
     }];
     choices.extend(companion::COLORS.iter().map(|id| MenuChoice {
         id: format!("{COLOR}{id}"),
         label: companion::color_name(id),
         checked: current == Some(*id),
+        ..MenuChoice::default()
     }));
     ItemMenu {
         title: crate::t!("claude-code.menu.color"),
@@ -443,6 +447,8 @@ fn item(session: &Session, settings: &Settings) -> Item {
             .cwd
             .as_ref()
             .and_then(|cwd| settings.companions.get(cwd))
+            // An imported companion since removed: the dot again.
+            .filter(|id| companion::exists(id))
             .map(|id| companion::Choice {
                 id: id.clone(),
                 size: settings.companion_size,
@@ -453,6 +459,8 @@ fn item(session: &Session, settings: &Settings) -> Item {
                     // A color dropped from the palette: the state's again.
                     .filter(|color| companion::COLORS.contains(&color.as_str()))
                     .cloned(),
+                dimmed: false,
+                reactive: false,
             }),
         ..Item::default()
     }
@@ -543,6 +551,8 @@ mod tests {
                 id: "bloop".into(),
                 size: companion::Size::Large,
                 color: Some("pink".into()),
+                dimmed: false,
+                reactive: false,
             })
         );
         assert_eq!(item_of(Some("/work/other")), None);

@@ -51,6 +51,17 @@ pub enum Icon {
     Next,
 }
 
+/// What an item is busy with, for whoever reacts to the notch (the
+/// Companion module, DF-0024).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Activity {
+    /// Music or a video playing.
+    Music,
+    /// Something running (a stopwatch).
+    Running,
+}
+
 /// A slider in an item's row of the open notch (e.g. the volume). Moving it
 /// calls `Module::item_action` with `set:<value>`.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -143,6 +154,8 @@ pub struct Item {
     pub image: Option<String>,
     /// Shown faded, e.g. a paused track.
     pub dimmed: bool,
+    /// What it is busy with, if anything (DF-0024): music playing, running.
+    pub activity: Option<Activity>,
     /// In the compact views, a text too long for its place scrolls instead
     /// of being cut (DF-0017).
     pub scroll: bool,
@@ -181,12 +194,14 @@ pub struct ItemMenu {
 
 /// One choice of an `ItemMenu`: picking it calls `Module::item_action` with
 /// its id.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct MenuChoice {
     pub id: String,
     pub label: String,
     /// The current choice, shown ticked.
     pub checked: bool,
+    /// Drawn after a separator line, apart from the choices above.
+    pub separated: bool,
 }
 
 /// A feature shown in the notch. Modules are compiled in and handed to
@@ -230,6 +245,11 @@ pub trait Module: Send + Sync + 'static {
     }
     /// The user clicked one of an item's buttons (`Item::actions`).
     fn item_action(&self, _item: &str, _action: &str) {}
+    /// Whether its pin opens to the whole module when hovered; `false` keeps
+    /// the pin's small shape (the Companion module, DF-0024).
+    fn pin_opens(&self) -> bool {
+        true
+    }
     /// Submenus of choices for the right-click menu of an item, above the
     /// module's own entries (pin, unpin); none by default.
     fn item_menu(&self, _item: &str) -> Vec<ItemMenu> {
@@ -325,6 +345,8 @@ pub struct Section {
     pub note: Option<String>,
     /// Pinned: shown in its own mini-notch on this side (DF-0012).
     pub pin: Option<Side>,
+    /// Its pin opens when hovered (`Module::pin_opens`).
+    pub pin_opens: bool,
 }
 
 /// Where a pinned module's mini-notch is, next to the notch. On the left and
@@ -443,6 +465,7 @@ pub(crate) fn content(modules: &[Box<dyn Module>], config: &config::Config) -> C
                 items,
                 note,
                 pin,
+                pin_opens: module.pin_opens(),
             });
         }
     }

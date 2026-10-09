@@ -1,6 +1,7 @@
 pub mod companion;
 mod config;
 mod context_menu;
+mod diagnostics;
 pub mod i18n;
 pub mod module;
 pub mod modules;
@@ -31,6 +32,10 @@ pub struct AppState {
     pub user_hidden: AtomicBool,
     /// Move mode, on while the settings ask for it (DF-0006, step 3).
     pub movable: AtomicBool,
+    /// Where the log file and the crash marker live (ADR-0014).
+    pub log_dir: PathBuf,
+    /// The previous run's crash, shown in the settings until dismissed.
+    pub crash: Mutex<Option<diagnostics::Crash>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -205,6 +210,10 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             }
         }))
         .plugin(tauri_plugin_autostart::Builder::new().build())
+        // Rust-side file pickers (custom companions, DF-0025).
+        .plugin(tauri_plugin_dialog::init())
+        // In installed builds too (ADR-0014).
+        .plugin(diagnostics::log_plugin())
         .invoke_handler(tauri::generate_handler![
             get_content,
             get_status,
@@ -241,19 +250,38 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             set_tucked,
             settings::set_module_pin,
             settings::module_call,
-            context_menu::module_menu
+            context_menu::module_menu,
+            diagnostics::open_log,
+            diagnostics::reveal_log,
+            diagnostics::crash_report,
+            diagnostics::dismiss_crash,
+            companion::library::get_companions,
+            companion::library::reload_companions,
+            companion::library::import_companion,
+            companion::library::delete_companion,
+            companion::library::reveal_companions,
+            companion::library::export_companion_template
         ])
         .setup(move |app| {
-            if cfg!(debug_assertions) {
-                app.handle().plugin(
-                    tauri_plugin_log::Builder::default()
-                        .level(log::LevelFilter::Info)
-                        .build(),
-                )?;
+            let log_dir = app.path().app_log_dir()?;
+            diagnostics::install_panic_hook(
+                log_dir.clone(),
+                app.package_info().version.to_string(),
+            );
+            let crash = diagnostics::take_crash(&log_dir);
+            diagnostics::test_panic();
+            if let Some(crash) = &crash {
+                log::warn!(
+                    "the previous run crashed at {}: {}",
+                    crash.location,
+                    crash.message
+                );
             }
 
             let config_dir = app.path().app_config_dir()?;
             let config = config::load_or_create(&config_dir);
+            // Before the modules: they offer the imported companions.
+            companion::load_custom(&config_dir);
             for module in &modules {
                 for (language, json) in module.locales() {
                     i18n::register(language, json);
@@ -271,6 +299,8 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
                 config_dir,
                 user_hidden: AtomicBool::new(false),
                 movable: AtomicBool::new(false),
+                log_dir,
+                crash: Mutex::new(crash.clone()),
             });
             let state = app.state::<AppState>();
             for (module, enabled) in state.modules.iter().zip(enabled) {
@@ -290,6 +320,11 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             tray::create(app.handle())?;
             // The right-click menu of the modules (the tray has its own).
             app.on_menu_event(|app, event| context_menu::handle(app, &event));
+            // The crash is reported in the settings, opened without taking
+            // the focus from the user's app.
+            if crash.is_some() {
+                settings::open_in_background(app.handle())?;
+            }
             Ok(())
         })
         .on_window_event(|window, event| {

@@ -2,13 +2,22 @@
   // When each item's companion entered its tone, by item: an animation
   // redrawn elsewhere (the notch opened, a pin) goes on where it was, and
   // the arrival is not played again.
-  const started = new Map<string, { tone: string; at: number }>()
+  const started = new Map<string, { state: string; at: number }>()
 </script>
 
 <script lang="ts">
   import { toneColor, type CompanionSize, type Tone } from './content'
-  import { center, OVERLAP, pictures, RATIO } from './companions/companion'
-  import { companions, SIZES } from './companions'
+  import {
+    center,
+    moodAnimation,
+    OVERLAP,
+    pictures,
+    played,
+    RATIO,
+  } from './companions/companion'
+  import type { Mood } from './companions/mood.svelte'
+  import { SIZES } from './companions'
+  import { companionById } from './companions/custom.svelte'
 
   // A companion (DF-0020) in place of an item's dot: its animation for the
   // tone, in the tone's color. The frames sit side by side in one SVG that
@@ -19,48 +28,73 @@
   // where it is drawn bigger.
   // `color`: its own color (`--companion-<color>`), worn while working and,
   // darker, at rest; the other states keep theirs, so they stay readable.
+  // `dimmed`: darker while working too, as at rest (a color too bright).
+  // `mood`: plays that mood's animation instead of the tone's (DF-0024);
+  // `tone` still decides the color. `replay`: a new value plays the same
+  // mood again from the start (each click petting it).
   let {
     item,
     id,
     size,
     color = null,
+    dimmed = false,
     tone,
+    mood = null,
+    replay = 0,
     compact = false,
   }: {
     item: string
     id: string
     size: CompanionSize
     color?: string | null
+    dimmed?: boolean
     tone: Tone
+    mood?: Mood | null
+    replay?: number
     compact?: boolean
   } = $props()
 
-  const painted = $derived(
-    color && tone === 'active'
-      ? `var(--companion-${color})`
-      : color && tone === 'neutral'
-        ? `color-mix(in srgb, var(--companion-${color}) 60%, var(--notch-bg))`
-        : toneColor(tone),
-  )
+  // What it plays: a mood, else its state, and how many times it restarted.
+  const state = $derived(`${mood ?? tone}:${replay}`)
+
+  const painted = $derived.by(() => {
+    const own = color && (tone === 'active' || tone === 'neutral')
+    // A palette name, or a `#rrggbb` picked in the settings.
+    const base = own
+      ? color.startsWith('#')
+        ? color
+        : `var(--companion-${color})`
+      : toneColor(tone)
+    const darker = (own && tone === 'neutral') || (dimmed && tone === 'active')
+    return darker ? `color-mix(in srgb, ${base} 60%, var(--notch-bg))` : base
+  })
 
   // Ids of the pictures, unique in the page.
   const uid = $props.id()
 
-  const companion = $derived(companions[id])
-  const animation = $derived(companion?.animations[tone])
-  const drawn = $derived(animation ? pictures(animation) : { paths: [], order: [] })
-  const count = $derived(drawn.order.length)
-
-  // Seconds since the item entered this tone.
-  const elapsed = $derived.by(() => {
+  // When the item entered this state (tone or mood), and the seconds since.
+  const entered = $derived.by(() => {
     const now = performance.now()
     const known = started.get(item)
-    if (known?.tone !== tone) {
-      started.set(item, { tone, at: now })
-      return 0
+    if (known?.state !== state) {
+      started.set(item, { state, at: now })
+      return { at: now, elapsed: 0 }
     }
-    return (now - known.at) / 1000
+    return { at: known.at, elapsed: (now - known.at) / 1000 }
   })
+  const elapsed = $derived(entered.elapsed)
+
+  const companion = $derived(companionById(id))
+  // `#` in its color; an imported companion's own colors (DF-0025).
+  const fill = (char: string) =>
+    char === '#' ? 'currentColor' : (companion?.palette?.[char] ?? 'currentColor')
+  // Scenes in random order drawn when the state started (`played`).
+  const animation = $derived(
+    companion &&
+      played(mood ? moodAnimation(companion, mood) : companion.animations[tone], entered.at),
+  )
+  const drawn = $derived(animation ? pictures(animation) : { paths: [], order: [] })
+  const count = $derived(drawn.order.length)
 
   // The CSS animations: the arrival, then the loop, both moved back by the
   // time already spent in this tone.
@@ -98,11 +132,13 @@
   >
     {#if count === 1}
       <svg viewBox="0 0 {width} {height}" shape-rendering="crispEdges" aria-hidden="true">
-        <path d={drawn.paths[0]} fill="currentColor" />
+        {#each drawn.paths[0] as part (part.char)}
+          <path d={part.d} fill={fill(part.char)} />
+        {/each}
       </svg>
     {:else}
-      <!-- Keyed on the tone: a new state starts its animation from the start. -->
-      {#key tone}
+      <!-- Keyed on the state: a new one starts its animation from the start. -->
+      {#key state}
         <svg
           class="playing"
           viewBox="0 0 {width * count} {height}"
@@ -111,8 +147,12 @@
           style:animation={playing}
         >
           <defs>
-            {#each drawn.paths as d, k (k)}
-              <path id="{uid}-{k}" {d} fill="currentColor" />
+            {#each drawn.paths as picture, k (k)}
+              <g id="{uid}-{k}">
+                {#each picture as part (part.char)}
+                  <path d={part.d} fill={fill(part.char)} />
+                {/each}
+              </g>
             {/each}
           </defs>
           {#each drawn.order as k, i (i)}

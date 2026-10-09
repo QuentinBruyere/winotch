@@ -32,6 +32,11 @@ import {
 // |           |                             | right                                       |
 // | success   | ★ check mark on the screen  | still, ★ happy eyes, bulb on                |
 // | error     | ★ reboots: snow, black      | crossed eyes, ★ a spark now and then        |
+//
+// Moods (the Companion module, DF-0024): awake and calm by day (idle,
+// ★ scans), dances with notes and a flashing
+// bulb, runs on the spot, watches you, petted (★ a heart on its screen),
+// stretches its arms; alarm = attention, sleep = neutral.
 
 const WIDTH = 24
 const HEIGHT = 16
@@ -237,6 +242,55 @@ const snow = (step: number) =>
     ),
   )
 
+// --- Moods (the Companion module, DF-0024) ---
+
+const NOTE = ['.##', '.#.', '##.']
+const note = (x: number, y: number) => layer(NOTE, x, y)
+// Speed lines behind a runner.
+const lines = (y: number) => [layer(['###', '...', '.##'], 0, y)]
+const HEART = ['#.#', '###', '.#.']
+
+// Dances: bobs, arms up, the bulb flashing, notes around.
+const dance = times(
+  [
+    ...hold(pose({ dy: -1, arms: 'up', bulb: 'on', extra: [note(2, 3)] }), 2),
+    ...hold(pose({ arms: 'out', extra: [note(2, 5)] }), 2),
+    ...hold(pose({ dy: -1, arms: 'up', bulb: 'on', extra: [note(20, 3)] }), 2),
+    ...hold(pose({ arms: 'out', extra: [note(20, 5)] }), 2),
+  ],
+  2,
+)
+// Runs on the spot: feet and arms swapping.
+const run = times(
+  [
+    pose({ look: [1, 0], feet: 'stepLeft', arms: 'leftOut', extra: lines(9) }),
+    pose({ dy: -1, look: [1, 0], feet: 'stepRight', arms: 'rightOut', extra: lines(10) }),
+  ],
+  4,
+)
+// Awake, bulb on, looking at you.
+const watch = [
+  ...hold(pose({ bulb: 'on' }), 14),
+  ...blink,
+  ...hold(pose({ bulb: 'on', look: [0, -1] }), 6),
+]
+// Petted: a heart on its screen.
+const HEART_SCREEN = ['.##..##.', '########', '.######.', '..####..']
+const petted = [
+  ...hold(pose({ bulb: 'on', screen: screen(HEART_SCREEN) }), 6),
+  pose({ bulb: 'on', screen: [] }),
+  ...hold(pose({ bulb: 'on', screen: screen(HEART_SCREEN) }), 4),
+]
+// Stretches its arms up, eyes shut, the bulb flickering, then blinks.
+const stretching = [
+  rest,
+  ...hold(pose({ arms: 'up', eyes: 'closed', bulb: 'on' }), 3),
+  pose({ arms: 'up', eyes: 'closed' }),
+  ...hold(pose({ arms: 'up', eyes: 'closed', bulb: 'on' }), 3),
+  rest,
+  ...blink,
+]
+
 export const bit: Companion = {
   width: WIDTH,
   height: HEIGHT,
@@ -314,5 +368,25 @@ export const bit: Companion = {
         ...hold(pose({ eyes: 'cross' }), 12),
       ],
     },
+  },
+  moods: {
+    // A quiet day: its scenes in a random order (scanning, radio waves, a
+    // little walk, a nap in sleep mode…), a calm pause before each.
+    idle: {
+      fps: 8,
+      frames: [...hold(rest, 20), ...blink, ...hold(rest, 8)],
+      scenes: [
+        [...hold(pose({ look: [-1, 0] }), 6), ...hold(pose({ look: [1, 0] }), 6)],
+        scan,
+        radio,
+        [...hold(pose({ eyes: 'half' }), 3), ...times(sleep, 3), ...blink],
+        walk,
+      ],
+    },
+    dance: { fps: 8, frames: dance },
+    run: { fps: 8, frames: run },
+    watch: { fps: 8, frames: watch },
+    petted: { fps: 8, intro: petted, frames: [pose({ eyes: 'happy', bulb: 'on' })] },
+    stretch: { fps: 8, intro: stretching, frames: [rest] },
   },
 }

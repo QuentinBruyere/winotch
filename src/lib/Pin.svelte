@@ -10,6 +10,7 @@
   import { icons } from './icons'
   import {
     compactMarks,
+    onlyItem,
     MAX_COMPACT_COMPANIONS,
     MAX_VERTICAL_COMPANIONS,
     mostUrgent,
@@ -108,7 +109,9 @@
   onkeydown={(e) => e.key === 'Enter' && onclick()}
   oncontextmenu={(e) => {
     e.preventDefault()
-    onmenu(section.module)
+    // The item under the cursor (open), else its only one (a companion).
+    const row = (e.target as Element).closest<HTMLElement>('[data-item]')?.dataset.item
+    onmenu(section.module, row ?? onlyItem(section.items))
   }}
 >
   {#if open}

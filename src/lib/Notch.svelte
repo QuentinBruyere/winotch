@@ -13,6 +13,7 @@
   import {
     compactMarks,
     compactSection,
+    onlyItem,
     MAX_COMPACT_COMPANIONS,
     MAX_VERTICAL_COMPANIONS,
     corners,
@@ -189,7 +190,8 @@
       onpointercancel={onpointerup}
       oncontextmenu={(e) => {
         // Open, each module's part has its own menu (Sections).
-        if (!expanded && shown) onmenu(shown.module)
+        // Closed: the module's only item if it has one (a companion).
+        if (!expanded && shown) onmenu(shown.module, onlyItem(shown.items))
         e.preventDefault()
       }}
     >

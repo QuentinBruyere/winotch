@@ -113,6 +113,50 @@ pub fn foreground_class() -> String {
     unsafe { class_name(GetForegroundWindow()) }
 }
 
+/// Windows' name, display version and build, for crash reports (ADR-0014).
+/// The product name in the registry still says "Windows 10" on Windows 11:
+/// the build tells them apart.
+pub fn os_version() -> String {
+    let build = current_version("CurrentBuild").unwrap_or_default();
+    let name = if build.parse::<u32>().is_ok_and(|b| b >= 22000) {
+        "Windows 11"
+    } else {
+        "Windows 10"
+    };
+    match current_version("DisplayVersion") {
+        Some(display) => format!("{name} {display} (build {build})"),
+        None => format!("{name} (build {build})"),
+    }
+}
+
+/// A text value of `HKLM\SOFTWARE\Microsoft\Windows NT\CurrentVersion`.
+fn current_version(name: &str) -> Option<String> {
+    use windows_sys::Win32::System::Registry::{HKEY_LOCAL_MACHINE, RRF_RT_REG_SZ, RegGetValueW};
+    let key: Vec<u16> = "SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion\0"
+        .encode_utf16()
+        .collect();
+    let value: Vec<u16> = format!("{name}\0").encode_utf16().collect();
+    let mut buffer = [0u16; 64];
+    let mut bytes = size_of_val(&buffer) as u32;
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_LOCAL_MACHINE,
+            key.as_ptr(),
+            value.as_ptr(),
+            RRF_RT_REG_SZ,
+            std::ptr::null_mut(),
+            buffer.as_mut_ptr().cast(),
+            &mut bytes,
+        )
+    };
+    if status != 0 {
+        return None;
+    }
+    // The size counts the final null.
+    let len = (bytes as usize / 2).saturating_sub(1);
+    Some(String::from_utf16_lossy(&buffer[..len]))
+}
+
 /// Physical pixels the window region extends past the drawn shape, so its
 /// anti-aliased edge is not cut (see `card_region`).
 const AA_MARGIN: i32 = 2;

@@ -17,9 +17,9 @@ pub struct Shape {
 mod windows;
 #[cfg(windows)]
 pub use windows::{
-    bring_to_front, foreground_class, fullscreen_on_notch_screen, prepare_overlay, repaint_host,
-    restrict_to_shapes, set_cursor_resistance, set_resistance_rect, set_resistance_strength,
-    take_breakthrough,
+    bring_to_front, foreground_class, fullscreen_on_notch_screen, os_version, prepare_overlay,
+    repaint_host, restrict_to_shapes, set_cursor_resistance, set_resistance_rect,
+    set_resistance_strength, take_breakthrough,
 };
 
 #[cfg(not(windows))]
@@ -79,4 +79,9 @@ pub fn take_breakthrough() -> Option<crate::resistance::Breakthrough> {
 #[cfg(not(windows))]
 pub fn foreground_class() -> String {
     String::new()
+}
+
+#[cfg(not(windows))]
+pub fn os_version() -> String {
+    std::env::consts::OS.to_owned()
 }

@@ -79,6 +79,10 @@ pub struct Settings {
     /// The language shown, the system's resolved.
     shown_language: &'static str,
     config_dir: String,
+    /// The log file (ADR-0014).
+    log_file: String,
+    /// The previous run's crash, until the user dismisses it.
+    crash: Option<crate::diagnostics::Crash>,
 }
 
 pub fn current(app: &AppHandle) -> Settings {
@@ -128,6 +132,10 @@ pub fn current(app: &AppHandle) -> Settings {
         languages: crate::i18n::LANGUAGES.to_vec(),
         shown_language: crate::i18n::language(),
         config_dir: state.config_dir.display().to_string(),
+        log_file: crate::diagnostics::log_file(&state.log_dir)
+            .display()
+            .to_string(),
+        crash: state.crash.lock().unwrap().clone(),
     }
 }
 
@@ -153,10 +161,24 @@ fn repaint_notch_host(app: &AppHandle) {
 
 /// Opens the settings window, or brings it back to the front.
 pub fn open(app: &AppHandle) -> tauri::Result<()> {
+    open_window(app, true)
+}
+
+/// Opens the settings window without taking the focus: winotch opens it by
+/// itself (a crash to report, ADR-0014), the user is busy elsewhere.
+pub fn open_in_background(app: &AppHandle) -> tauri::Result<()> {
+    open_window(app, false)
+}
+
+fn open_window(app: &AppHandle, focus: bool) -> tauri::Result<()> {
     if let Some(window) = app.get_webview_window(SETTINGS_LABEL) {
         window.unminimize()?;
         window.show()?;
-        return platform::bring_to_front(&window);
+        return if focus {
+            platform::bring_to_front(&window)
+        } else {
+            Ok(())
+        };
     }
     let window =
         WebviewWindowBuilder::new(app, SETTINGS_LABEL, WebviewUrl::App("index.html".into()))
@@ -165,6 +187,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
             .min_inner_size(600.0, 420.0)
             .center()
             .theme(window_theme(app))
+            .focused(focus)
             .on_page_load(|window, payload| {
                 if payload.event() == PageLoadEvent::Finished {
                     repaint_notch_host(window.app_handle());
@@ -181,7 +204,11 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
             notch::set_movable(&handle, false);
         }
     });
-    platform::bring_to_front(&window)
+    if focus {
+        platform::bring_to_front(&window)
+    } else {
+        Ok(())
+    }
 }
 
 /// Tells every window (notch included) that settings changed.

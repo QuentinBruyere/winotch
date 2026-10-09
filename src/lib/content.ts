@@ -52,8 +52,17 @@ export interface Item {
   dot: boolean
   // Drawn instead of the dot (DF-0020): a companion, see lib/companions.
   // `color`: worn while working, darker at rest (`--companion-<color>` in
-  // app.css); null = always the state's.
-  companion: { id: string; size: CompanionSize; color: string | null } | null
+  // app.css); null = always the state's. `reactive`: its mood follows the
+  // notch and the mouse, not the tone (DF-0024).
+  companion: {
+    id: string
+    size: CompanionSize
+    color: string | null
+    dimmed: boolean
+    reactive: boolean
+  } | null
+  // What it is busy with (DF-0024): music playing, something running.
+  activity: 'music' | 'running' | null
   actions: Action[]
   // A slider in the open notch, between the title and the label.
   slider: Slider | null
@@ -91,6 +100,8 @@ export interface Section {
   note: string | null
   // Pinned: shown in its own mini-notch on this side of the notch (DF-0012).
   pin: Side | null
+  // Its pin opens when hovered; else it keeps its small shape (DF-0024).
+  pinOpens: boolean
 }
 
 // Side of a pin, mirrors `Side` in src-tauri/src/module.rs. On the left and
@@ -237,6 +248,12 @@ export function compactMarks(items: Item[], max: number): { shown: Item[]; hidde
       .slice(0, max),
   )
   return { shown: marked.filter((i) => kept.has(i)), hidden: marked.length - max }
+}
+
+// A module's single item, if it has exactly one: what a right click on a
+// closed view of it aims at (its own menu entries, e.g. a companion's).
+export function onlyItem(items: Item[]): string | undefined {
+  return items.length === 1 ? items[0].id : undefined
 }
 
 export function toneColor(tone: Tone): string {

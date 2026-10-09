@@ -6,7 +6,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use super::watch::Watch;
-use crate::module::{Action, Host, Icon, Item, Module, Tone, format_duration};
+use crate::module::{Action, Activity, Host, Icon, Item, Module, Tone, format_duration};
 use crate::t;
 
 /// Check interval while stopped: nothing to redraw, just notice a start.
@@ -110,6 +110,7 @@ fn item(watch: &Watch, now: Instant) -> Item {
         actions,
         // Never started: the compact views show the stopwatch icon.
         quiet: watch.idle(),
+        activity: watch.running().then_some(Activity::Running),
         ..Item::default()
     }
 }

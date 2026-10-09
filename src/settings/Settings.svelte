@@ -11,6 +11,7 @@
   import { setLanguage, t, type Key } from '../lib/i18n.svelte'
   import { applyAppearance, MAX_GRAIN, type Appearance } from '../lib/theme'
   import type { ModuleUis } from '../modules'
+  import CustomCompanions from './CustomCompanions.svelte'
   import './settings.css'
 
   let { moduleUis }: { moduleUis: ModuleUis } = $props()
@@ -50,6 +51,9 @@
     // The language shown, the system's resolved (ADR-0012).
     shownLanguage: string
     configDir: string
+    logFile: string
+    // The previous run's crash (ADR-0014), until dismissed.
+    crash: { at: string; version: string; thread: string; location: string; message: string } | null
   }
 
   // Mirrors `ModuleInfo` in src-tauri/src/settings.rs
@@ -64,11 +68,12 @@
   }
 
   // Categories of the left menu (DF-0007).
-  type Page = 'general' | 'display' | 'modules' | 'about'
+  type Page = 'general' | 'display' | 'modules' | 'companions' | 'about'
   const pages: { id: Page; key: Key }[] = [
     { id: 'general', key: 'settings.page.general' },
     { id: 'display', key: 'settings.page.display' },
     { id: 'modules', key: 'settings.page.modules' },
+    { id: 'companions', key: 'settings.page.companions' },
     { id: 'about', key: 'settings.page.about' },
   ]
 
@@ -316,6 +321,22 @@
     }
   }
 
+  // Copies the report (version, system, end of the log) for the user to
+  // send; nothing leaves the machine from here (ADR-0014).
+  let copied = $state(false)
+  let copiedTimer: ReturnType<typeof setTimeout> | undefined
+  async function copyReport() {
+    error = null
+    try {
+      await navigator.clipboard.writeText(await invoke<string>('crash_report'))
+      copied = true
+      clearTimeout(copiedTimer)
+      copiedTimer = setTimeout(() => (copied = false), 2000)
+    } catch {
+      error = t('settings.log.copy_failed')
+    }
+  }
+
   // Position of the speed slider, follows the saved setting.
   let speedIndex = $state(1)
   $effect(() => {
@@ -345,7 +366,11 @@
 
   $effect(() => {
     const unlisten = listen<Settings>('settings-changed', (e) => load(e.payload))
-    const refresh = () => invoke<Settings>('get_settings').then(load)
+    const refresh = () => {
+      // A companion pack may have been dropped in its folder (DF-0025).
+      void invoke('reload_companions')
+      return invoke<Settings>('get_settings').then(load)
+    }
     void refresh()
     // A monitor may have been plugged in or out while the window was hidden.
     window.addEventListener('focus', refresh)
@@ -379,6 +404,24 @@
   <main>
     {#if error}
       <p class="error" role="alert">{error}</p>
+    {/if}
+
+    {#if settings?.crash}
+      <section class="crash" role="alert">
+        <div class="label">{t('settings.crash.title')}</div>
+        <div class="hint">
+          {t('settings.crash.hint', {
+            date: new Date(settings.crash.at).toLocaleString(settings.shownLanguage),
+          })}
+        </div>
+        <div class="actions">
+          <button class="primary" onclick={copyReport}>
+            {copied ? t('settings.log.copied') : t('settings.log.copy_report')}
+          </button>
+          <button onclick={() => run('open_log')}>{t('settings.log.open')}</button>
+          <button onclick={() => run('dismiss_crash')}>{t('settings.crash.dismiss')}</button>
+        </div>
+      </section>
     {/if}
 
     {#if settings}
@@ -798,6 +841,9 @@
             </div>
           </div>
         </section>
+      {:else if page === 'companions'}
+        <h1>{t('settings.page.companions')}</h1>
+        <CustomCompanions />
       {:else if page === 'modules' && openModule}
         {@const ModuleSettings = moduleUis[openModule.id]?.settings}
         <button class="back" onclick={() => (openModuleId = null)}>← {t('settings.page.modules')}</button>
@@ -922,6 +968,19 @@
             <div>
               <div class="label">{t('settings.config_dir')}</div>
               <div class="hint path">{settings.configDir}</div>
+            </div>
+          </div>
+          <div class="stack separated">
+            <div>
+              <div class="label">{t('settings.log')}</div>
+              <div class="hint path">{settings.logFile}</div>
+            </div>
+            <div class="actions">
+              <button onclick={() => run('open_log')}>{t('settings.log.open')}</button>
+              <button onclick={() => run('reveal_log')}>{t('settings.log.reveal')}</button>
+              <button onclick={copyReport}>
+                {copied ? t('settings.log.copied') : t('settings.log.copy_report')}
+              </button>
             </div>
           </div>
           <div class="row">

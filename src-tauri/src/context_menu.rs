@@ -86,6 +86,10 @@ fn item_submenu(
 ) -> Result<Submenu<tauri::Wry>, String> {
     let submenu = Submenu::new(app, menu.title, true).map_err(|e| e.to_string())?;
     for choice in menu.choices {
+        if choice.separated {
+            let separator = PredefinedMenuItem::separator(app).map_err(|e| e.to_string())?;
+            submenu.append(&separator).map_err(|e| e.to_string())?;
+        }
         let id = format!("{ITEM_CHOICE}{module}\t{item}\t{}", choice.id);
         let entry =
             CheckMenuItem::with_id(app, id, choice.label, true, choice.checked, None::<&str>)

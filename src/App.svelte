@@ -4,6 +4,7 @@
   import Notch from './lib/Notch.svelte'
   import Pin from './lib/Pin.svelte'
   import { setLanguage } from './lib/i18n.svelte'
+  import { setNotchSections } from './lib/companions/mood.svelte'
   import { applyAppearance, setNotchColor } from './lib/theme'
   import {
     allItems,
@@ -92,6 +93,7 @@
   })
   $effect(() => setNotchColor(status.notchColor, status.notchOpacity, status.notchGrain))
   $effect(() => applyAppearance(status.appearance))
+  $effect(() => setNotchSections(content.sections))
   $effect(() => setLanguage(status.language))
   let notice = $state<string | null>(null)
   let hovered = $state(false)
@@ -219,6 +221,8 @@
   // (away from the notch) and towards the inside of the screen.
   const pinned = $derived(content.sections.filter((s) => s.pin && s.items.length > 0))
   function pinOpen(module: string): boolean {
+    // Some modules keep their pin small, hovered or not (the Companion).
+    if (pinned.find((s) => s.module === module)?.pinOpens === false) return false
     return (
       !status.movable &&
       !notice &&

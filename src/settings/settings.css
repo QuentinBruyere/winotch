@@ -260,6 +260,46 @@ html[data-window='settings'] {
     color: var(--danger);
   }
 
+  /* Imported companions (DF-0025): a preview on the notch's background. */
+  & .custom-companion {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* The built-in companions: a tile each, name under the preview. */
+  & .companion-tiles {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+  }
+
+  & .companion-tile {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+  }
+
+  & .companion-preview {
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+    width: 64px;
+    height: 44px;
+    overflow: hidden;
+    border-radius: 8px;
+    background: var(--notch-bg);
+  }
+
+  /* The previous run's crash (ADR-0014), above every page. */
+  & section.crash {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    border-left: 3px solid var(--danger);
+  }
+
   & main > .error {
     margin: 0;
   }

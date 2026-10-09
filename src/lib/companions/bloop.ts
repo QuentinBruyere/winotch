@@ -29,6 +29,11 @@ import {
 // | question  | -                 | raises an arm under a "?", looks up, left, right      |
 // | success   | ★ confetti falls  | still (no smile: the color says it)                   |
 // | error     | ★ falls flat      | flat, crossed eyes, dazed now and then                |
+//
+// Moods (the Companion module, DF-0024): awake and calm by day (idle),
+// dances with notes, runs on the
+// spot, watches you, petted (hearts), ★ stretches tall; alarm = attention,
+// sleep = neutral.
 
 const WIDTH = 24
 const HEIGHT = 16
@@ -263,6 +268,50 @@ const plusEyes = ['.o.', 'ooo', '.o.']
 const flat = (eyes: string[]) =>
   compose(WIDTH, HEIGHT, layer(FLAT, 5, 9), layer(eyes, 8, 10), layer(eyes, 13, 10))
 
+// --- Moods (the Companion module, DF-0024) ---
+
+const NOTE = ['.##', '.#.', '##.']
+const note = (x: number, y: number) => layer(NOTE, x, y)
+// Speed lines behind a runner.
+const lines = (y: number) => [layer(['###', '...', '.##'], 0, y)]
+const HEART = ['#.#', '###', '.#.']
+
+// Dances: sways side to side, arms up, eyes half shut, notes around.
+const dance = times(
+  [
+    ...hold(pose({ dx: -1, arms: 'up', eyes: 'half', extra: [note(2, 4)] }), 2),
+    ...hold(pose({ dy: -1, arms: 'out', eyes: 'half', extra: [note(2, 2)] }), 2),
+    ...hold(pose({ dx: 1, arms: 'up', eyes: 'half', extra: [note(19, 4)] }), 2),
+    ...hold(pose({ dy: -1, arms: 'out', eyes: 'half', extra: [note(19, 2)] }), 2),
+  ],
+  2,
+)
+// Runs on the spot: bobbing, arms pumping.
+const run = times(
+  [
+    pose({ look: [1, 0], arms: 'leftOut', extra: lines(8) }),
+    pose({ dy: -1, look: [1, 0], arms: 'rightOut', extra: lines(9) }),
+  ],
+  4,
+)
+// Awake, looking at you.
+const watch = [...hold(rest, 14), ...blink, ...hold(pose({ look: [0, -1] }), 6)]
+// Petted: blissful, hearts rising.
+const petted = Array.from({ length: 8 }, (_, step) =>
+  pose({
+    eyes: 'half',
+    extra: [layer(HEART, 3, 6 - step), ...(step >= 2 ? [layer(HEART, 19, 8 - step)] : [])],
+  }),
+)
+// Stretches tall, eyes shut, then blinks.
+const stretching = [
+  rest,
+  ...hold(shape(STRETCH, 8, 3, EYES.closed, 9, 6), 6),
+  squash,
+  rest,
+  ...blink,
+]
+
 export const bloop: Companion = {
   width: WIDTH,
   height: HEIGHT,
@@ -323,5 +372,25 @@ export const bloop: Companion = {
       intro: [rest, squash, flat(xEyes)],
       frames: [...hold(flat(xEyes), 12), ...hold(flat(plusEyes), 2)],
     },
+  },
+  moods: {
+    // A quiet day: its scenes in a random order (rolling about, wobbling, a
+    // ball, a nap in a puddle…), a calm pause before each.
+    idle: {
+      fps: 8,
+      frames: [...hold(rest, 20), ...blink, ...hold(rest, 8)],
+      scenes: [
+        lookAround,
+        roll,
+        [...melting, ...times(nap, 3), ...[...melting].reverse(), ...blink],
+        wobble,
+        ball,
+      ],
+    },
+    dance: { fps: 8, frames: dance },
+    run: { fps: 8, frames: run },
+    watch: { fps: 8, frames: watch },
+    petted: { fps: 8, intro: petted, frames: [pose({ eyes: 'half' })] },
+    stretch: { fps: 8, intro: stretching, frames: [rest] },
   },
 }
