@@ -1,4 +1,4 @@
-//! Installs / removes winotch's HTTP hooks in the user's Claude Code settings,
+//! Installs / removes Minim Notch's HTTP hooks in the user's Claude Code settings,
 //! see docs/adr/0002-integration-claude-code-via-hooks.md.
 //! Existing settings are merged, never overwritten, and backed up first.
 
@@ -8,8 +8,11 @@ use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 
-/// URL path that identifies winotch's hooks among the user's own hooks.
-pub const HOOK_PATH: &str = "/winotch/hook";
+/// URL path that identifies Minim Notch's hooks among the user's own hooks.
+pub const HOOK_PATH: &str = "/minim-notch/hook";
+/// The path of the hooks installed when the app was still called winotch:
+/// still ours, replaced by the current one at the next install.
+const LEGACY_HOOK_PATH: &str = "/winotch/hook";
 
 const EVENTS: &[&str] = &[
     "SessionStart",
@@ -54,6 +57,11 @@ pub fn is_installed(path: &Path) -> bool {
     })
 }
 
+/// Hooks installed under the old name (`LEGACY_HOOK_PATH`) are there.
+pub fn has_legacy(path: &Path) -> bool {
+    fs::read_to_string(path).is_ok_and(|text| text.contains(LEGACY_HOOK_PATH))
+}
+
 fn read(path: &Path) -> io::Result<Value> {
     match fs::read_to_string(path) {
         Ok(text) if text.trim().is_empty() => Ok(json!({})),
@@ -73,19 +81,20 @@ fn write(path: &Path, settings: Value) -> io::Result<()> {
     if let Some(dir) = path.parent() {
         fs::create_dir_all(dir)?;
     }
-    // One backup, the settings as they were before winotch's last change.
+    // One backup, the settings as they were before Minim Notch's last change.
     if path.exists() {
-        fs::copy(path, path.with_extension("json.winotch-backup"))?;
+        fs::copy(path, path.with_extension("json.minim-notch-backup"))?;
         remove_old_backups(path);
     }
     let text = serde_json::to_string_pretty(&settings).map_err(io::Error::other)? + "\n";
-    let tmp = path.with_extension("json.winotch-tmp");
+    let tmp = path.with_extension("json.minim-notch-tmp");
     fs::write(&tmp, text)?;
     fs::rename(&tmp, path)
 }
 
-/// Removes the dated backups older versions of winotch left at each change
-/// (`settings.json.winotch-backup-<seconds>`); never anyone else's files.
+/// Removes the dated backups old versions left at each change, when the app
+/// was still called winotch (`settings.json.winotch-backup-<seconds>`);
+/// never anyone else's files.
 fn remove_old_backups(path: &Path) {
     let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
         return;
@@ -110,7 +119,10 @@ fn is_ours(handler: &Value) -> bool {
     handler
         .get("url")
         .and_then(Value::as_str)
-        .is_some_and(|url| url.starts_with("http://127.0.0.1:") && url.ends_with(HOOK_PATH))
+        .is_some_and(|url| {
+            url.starts_with("http://127.0.0.1:")
+                && (url.ends_with(HOOK_PATH) || url.ends_with(LEGACY_HOOK_PATH))
+        })
 }
 
 fn contains_ours(groups: &Value) -> bool {
@@ -123,7 +135,7 @@ fn contains_ours(groups: &Value) -> bool {
     })
 }
 
-/// Returns `settings` with winotch's hooks (re)installed for the given port and token.
+/// Returns `settings` with Minim Notch's hooks (re)installed for the given port and token.
 pub fn with_hooks(settings: Value, port: u16, token: &str) -> Value {
     let mut settings = without_hooks(settings);
     let root = as_object(&mut settings);
@@ -150,7 +162,7 @@ pub fn with_hooks(settings: Value, port: u16, token: &str) -> Value {
     settings
 }
 
-/// Returns `settings` without any winotch hook, leaving the user's own hooks intact.
+/// Returns `settings` without any Minim Notch hook, leaving the user's own hooks intact.
 pub fn without_hooks(mut settings: Value) -> Value {
     let Some(hooks) = settings.get_mut("hooks").and_then(Value::as_object_mut) else {
         return settings;
@@ -208,7 +220,7 @@ mod tests {
         assert_eq!(pre[0]["hooks"][0]["command"], "my-check.sh");
         assert_eq!(
             pre[1]["hooks"][0]["url"],
-            "http://127.0.0.1:1234/winotch/hook"
+            "http://127.0.0.1:1234/minim-notch/hook"
         );
         assert_eq!(pre[1]["hooks"][0]["headers"]["Authorization"], "Bearer tok");
         assert_eq!(s["hooks"].as_object().unwrap().len(), EVENTS.len());
@@ -221,7 +233,30 @@ mod tests {
         assert_eq!(twice["hooks"]["PreToolUse"].as_array().unwrap().len(), 2);
         assert_eq!(
             twice["hooks"]["Stop"][0]["hooks"][0]["url"],
-            "http://127.0.0.1:5678/winotch/hook"
+            "http://127.0.0.1:5678/minim-notch/hook"
+        );
+    }
+
+    #[test]
+    fn hooks_installed_under_the_old_name_are_replaced() {
+        let mut old = with_hooks(user_settings(), 1234, "tok");
+        let text = serde_json::to_string(&old)
+            .unwrap()
+            .replace(HOOK_PATH, LEGACY_HOOK_PATH);
+        old = serde_json::from_str(&text).unwrap();
+        assert!(
+            old["hooks"]
+                .as_object()
+                .unwrap()
+                .values()
+                .any(contains_ours)
+        );
+        let new = with_hooks(old, 1234, "tok");
+        assert_eq!(new["hooks"]["PreToolUse"].as_array().unwrap().len(), 2);
+        assert!(
+            !serde_json::to_string(&new)
+                .unwrap()
+                .contains(LEGACY_HOOK_PATH)
         );
     }
 
@@ -240,7 +275,7 @@ mod tests {
 
     #[test]
     fn install_and_uninstall_on_disk() {
-        let dir = std::env::temp_dir().join(format!("winotch-test-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("minim-notch-test-{}", std::process::id()));
         let path = dir.join("settings.json");
         fs::create_dir_all(&dir).unwrap();
         fs::write(&path, serde_json::to_string(&user_settings()).unwrap()).unwrap();
@@ -256,7 +291,8 @@ mod tests {
 
     #[test]
     fn one_backup_is_kept_and_old_dated_ones_removed() {
-        let dir = std::env::temp_dir().join(format!("winotch-test-backup-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("minim-notch-test-backup-{}", std::process::id()));
         let path = dir.join("settings.json");
         fs::create_dir_all(&dir).unwrap();
         fs::write(&path, serde_json::to_string(&user_settings()).unwrap()).unwrap();
@@ -266,7 +302,7 @@ mod tests {
         ] {
             fs::write(dir.join(old), "{}").unwrap();
         }
-        // Not winotch's dated backups: left alone.
+        // Not the old dated backups: left alone.
         for other in [
             "settings.json.bak.20260813",
             "settings.json.winotch-backup-notes",
@@ -287,7 +323,7 @@ mod tests {
             [
                 "settings.json",
                 "settings.json.bak.20260813",
-                "settings.json.winotch-backup",
+                "settings.json.minim-notch-backup",
                 "settings.json.winotch-backup-notes",
             ]
         );
@@ -297,7 +333,7 @@ mod tests {
 
     #[test]
     fn invalid_json_is_left_untouched() {
-        let dir = std::env::temp_dir().join(format!("winotch-test-bad-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("minim-notch-test-bad-{}", std::process::id()));
         let path = dir.join("settings.json");
         fs::create_dir_all(&dir).unwrap();
         fs::write(&path, "{ not json").unwrap();

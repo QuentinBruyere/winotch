@@ -385,7 +385,7 @@
 <div class="layout">
   <nav aria-label={t('settings.categories')}>
     <div class="brand">
-      winotch
+      Minim Notch
       {#if version}<span class="version">v{version}</span>{/if}
     </div>
     {#each pages as item (item.id)}

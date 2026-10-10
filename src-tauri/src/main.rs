@@ -1,16 +1,16 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use winotch_lib::modules::claude_code::ClaudeCode;
-use winotch_lib::modules::clock::Clock;
-use winotch_lib::modules::companion::DeskCompanion;
-use winotch_lib::modules::stopwatch::Stopwatch;
-use winotch_lib::modules::timer::Timer;
-use winotch_lib::modules::volume::Volume;
+use minim_notch_lib::modules::claude_code::ClaudeCode;
+use minim_notch_lib::modules::clock::Clock;
+use minim_notch_lib::modules::companion::DeskCompanion;
+use minim_notch_lib::modules::stopwatch::Stopwatch;
+use minim_notch_lib::modules::timer::Timer;
+use minim_notch_lib::modules::volume::Volume;
 
 fn main() {
     // Display order: at equal urgency, the first module's items come first.
-    winotch_lib::run(
+    minim_notch_lib::run(
         tauri::generate_context!(),
         vec![
             Box::new(ClaudeCode::default()),

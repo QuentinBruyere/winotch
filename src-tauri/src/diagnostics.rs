@@ -17,9 +17,9 @@ use crate::AppState;
 /// The log file's name, without extension: development builds keep their
 /// own, so they never report the installed app's crashes (or the reverse).
 const LOG_NAME: &str = if cfg!(debug_assertions) {
-    "winotch-dev"
+    "minim-notch-dev"
 } else {
-    "winotch"
+    "minim-notch"
 };
 /// Above this size the log starts a new file; the previous ones are kept.
 const MAX_LOG_BYTES: u128 = 1_000_000;
@@ -112,13 +112,13 @@ pub fn install_panic_hook(log_dir: PathBuf, version: String) {
     }));
 }
 
-/// Development only: `WINOTCH_TEST_PANIC` set, a thread panics right away,
+/// Development only: `MINIM_NOTCH_TEST_PANIC` set, a thread panics right away,
 /// to try the crash report (the app itself keeps running).
 pub fn test_panic() {
-    if cfg!(debug_assertions) && std::env::var_os("WINOTCH_TEST_PANIC").is_some() {
+    if cfg!(debug_assertions) && std::env::var_os("MINIM_NOTCH_TEST_PANIC").is_some() {
         let _ = std::thread::Builder::new()
             .name("test-panic".into())
-            .spawn(|| panic!("test panic asked by WINOTCH_TEST_PANIC"));
+            .spawn(|| panic!("test panic asked by MINIM_NOTCH_TEST_PANIC"));
     }
 }
 
@@ -161,7 +161,7 @@ fn redact(text: &str, home: Option<&str>) -> String {
 /// What a report carries: version, system, the crash if any, the end of the
 /// log. Shown to the user before they send it anywhere.
 fn report(version: &str, system: &str, crash: Option<&Crash>, log: &str) -> String {
-    let mut text = format!("winotch {version}\nSystem: {system}\n");
+    let mut text = format!("Minim Notch {version}\nSystem: {system}\n");
     if let Some(crash) = crash {
         text.push_str(&format!(
             "Crash: {} (version {}), thread {} at {}\n{}\n",
@@ -265,7 +265,7 @@ mod tests {
             .map(|i| format!("line {i}\n"))
             .collect();
         let text = report("0.5.1", "Windows 11", Some(&crash), &log);
-        assert!(text.starts_with("winotch 0.5.1\nSystem: Windows 11\n"));
+        assert!(text.starts_with("Minim Notch 0.5.1\nSystem: Windows 11\n"));
         assert!(text.contains("thread main at src\\notch.rs:42\nboom"));
         assert!(!text.contains("line 49\n"));
         assert!(text.contains("line 50\n"));
@@ -281,7 +281,7 @@ mod tests {
 
     #[test]
     fn the_crash_marker_is_read_once() {
-        let dir = std::env::temp_dir().join(format!("winotch-crash-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("minim-notch-crash-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         let crash = Crash {
             at: "now".into(),

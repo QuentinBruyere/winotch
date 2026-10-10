@@ -1,6 +1,7 @@
 <script lang="ts">
   import { invoke } from '@tauri-apps/api/core'
   import Companion from '../lib/Companion.svelte'
+  import CompanionPreview from './CompanionPreview.svelte'
   import { companions } from '../lib/companions'
   import { customCompanions } from '../lib/companions/custom.svelte'
   import { templatePack } from '../lib/companions/template'
@@ -14,6 +15,24 @@
   // The companion whose "Delete" was clicked once.
   let confirming = $state<string | null>(null)
   const list = $derived(customCompanions())
+  // The companion shown big with its animations (a click picks another):
+  // the first one at first, its panel closed until the user opens it.
+  let previewed = $state(Object.keys(companions)[0])
+  let previewOpen = $state(false)
+  function preview(id: string) {
+    previewed = id
+  }
+  const previewedName = $derived(
+    companions[previewed]
+      ? t(`companion.${previewed}` as Key)
+      : (list.find((c) => c.id === previewed)?.name ?? ''),
+  )
+  // A removed companion: back to the first one.
+  $effect(() => {
+    if (!companions[previewed] && !list.some((c) => c.id === previewed && c.definition)) {
+      previewed = Object.keys(companions)[0]
+    }
+  })
 
   async function attempt(work: () => Promise<string | null>) {
     message = null
@@ -61,14 +80,19 @@
   <h2>{t('settings.companions.built_in')}</h2>
   <div class="companion-tiles">
     {#each Object.keys(companions) as id (id)}
-      <div class="companion-tile">
+      <button
+        class="companion-tile"
+        class:selected={previewed === id}
+        onclick={() => preview(id)}
+      >
         <div class="companion-preview">
           <Companion item="settings:{id}" {id} size="large" tone="active" compact />
         </div>
         <div class="label">{t(`companion.${id}` as Key)}</div>
-      </div>
+      </button>
     {/each}
   </div>
+  <CompanionPreview id={previewed} name={previewedName} bind:open={previewOpen} />
 </section>
 
 <section>
@@ -80,11 +104,16 @@
   {#each list as custom (custom.id)}
     <div class="row separated">
       <div class="custom-companion">
-        <div class="companion-preview">
+        <button
+          class="companion-preview"
+          disabled={!custom.definition}
+          aria-label={t('settings.companions.preview', { name: custom.name })}
+          onclick={() => preview(custom.id)}
+        >
           {#if custom.definition}
             <Companion item="settings:{custom.id}" id={custom.id} size="large" tone="active" compact />
           {/if}
-        </div>
+        </button>
         <div>
           <div class="label">{custom.name}</div>
           {#if custom.error}<div class="error">{custom.error}</div>{/if}

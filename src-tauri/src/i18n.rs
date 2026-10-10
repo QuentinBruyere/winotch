@@ -65,7 +65,7 @@ fn parse(json: &str) -> Result<Catalog, serde_json::Error> {
 }
 
 /// Adds a module's own translations (`Module::locales`), for a language
-/// winotch knows.
+/// Minim Notch knows.
 pub fn register(language: &str, json: &str) {
     let Some(code) = known(language) else {
         log::warn!("translations for unknown language {language} ignored");

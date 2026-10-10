@@ -1,7 +1,7 @@
 [package]
-name = "winotch"
+name = "minim-notch"
 version = "0.1.0"
-description = "A notch that shows Claude Code activity"
+description = "Minim Notch: a notch that shows Claude Code activity"
 authors = ["Quentin Bruyere"]
 license = "GPL-3.0-only"
 repository = ""
@@ -9,7 +9,7 @@ edition = "2024"
 rust-version = "1.90"
 
 [lib]
-name = "winotch_lib"
+name = "minim_notch_lib"
 crate-type = ["rlib"]
 
 [build-dependencies]

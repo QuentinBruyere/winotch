@@ -1,7 +1,7 @@
-# winotch companion pack
+# Minim Notch companion pack
 
-This pack is a template: Bloop, one of winotch's built-in companions. Change
-its pictures (or draw your own), then import it in winotch: Settings →
+This pack is a template: Bloop, one of Minim Notch's built-in companions. Change
+its pictures (or draw your own), then import it in Minim Notch: Settings →
 Companions → Add a companion.
 
 A pack is a `.zip` (or a folder) holding `companion.json` and a PNG sheet.
@@ -37,9 +37,9 @@ sprite sheet (PNG).
 }
 ```
 
-- `name`: shown in winotch's menus.
+- `name`: shown in Minim Notch's menus.
 - `sheet`: the PNG next to `companion.json` (`sheet.png` if left out).
-- `colors`: `"tint"` (default): only the shape counts, winotch paints it like
+- `colors`: `"tint"` (default): only the shape counts, Minim Notch paints it like
   its own companions (the state's color, the color chosen by the user,
   "Darker"). `"own"`: the pack keeps its colors (62 at most); the state then
   only shows through the animation.

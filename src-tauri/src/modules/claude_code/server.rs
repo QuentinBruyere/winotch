@@ -27,7 +27,7 @@ pub fn start(
         // Ends when `unblock()` is called (port change).
         for mut request in listener.incoming_requests() {
             let status = match (request.method(), request.url()) {
-                (Method::Get, "/winotch/health") => 200,
+                (Method::Get, "/minim-notch/health") => 200,
                 (Method::Post, HOOK_PATH) if !authorized(&request, &expected) => 401,
                 (Method::Post, HOOK_PATH) => {
                     let mut body = Vec::new();

@@ -456,7 +456,8 @@ mod tests {
 
     #[test]
     fn the_folder_lists_valid_and_refused_packs() {
-        let dir = std::env::temp_dir().join(format!("winotch-companions-{}", std::process::id()));
+        let dir =
+            std::env::temp_dir().join(format!("minim-notch-companions-{}", std::process::id()));
         let _ = fs::remove_dir_all(&dir);
         let packs = folder(&dir);
         fs::create_dir_all(packs.join("tiny")).unwrap();
@@ -484,7 +485,7 @@ mod tests {
     fn imported_packs_get_a_free_file_name() {
         assert_eq!(slug("  Mon Chat — v2! "), "mon-chat-v2");
         assert_eq!(slug("✨"), "companion");
-        let dir = std::env::temp_dir().join(format!("winotch-unique-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("minim-notch-unique-{}", std::process::id()));
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("cat.zip"), b"").unwrap();
         assert_eq!(unique(&dir, "cat", ".zip"), dir.join("cat-2.zip"));

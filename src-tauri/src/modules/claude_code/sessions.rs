@@ -17,7 +17,7 @@ pub enum SessionState {
     Error,
 }
 
-/// The subset of the Claude Code hook payload winotch cares about.
+/// The subset of the Claude Code hook payload Minim Notch cares about.
 #[derive(Debug, Deserialize)]
 pub struct HookEvent {
     pub session_id: String,
@@ -92,7 +92,7 @@ impl SessionStore {
                     "PreToolUse" | "PermissionRequest" => event.tool_name.clone(),
                     _ => None,
                 };
-                // winotch may start after Claude Code: any event creates the session.
+                // Minim Notch may start after Claude Code: any event creates the session.
                 let created = !self.sessions.contains_key(&event.session_id);
                 let session = self
                     .sessions

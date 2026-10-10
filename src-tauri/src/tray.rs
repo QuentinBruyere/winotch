@@ -37,7 +37,7 @@ pub fn create(app: &AppHandle) -> tauri::Result<()> {
                 .cloned()
                 .expect("bundle icon is configured"),
         )
-        .tooltip("winotch")
+        .tooltip("Minim Notch")
         .menu(&menu(app)?)
         .show_menu_on_left_click(false)
         // Left click opens the settings, right click shows the menu.

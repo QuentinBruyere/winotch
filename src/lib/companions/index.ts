@@ -2,11 +2,13 @@ import type { CompanionSize } from '../content'
 import { bit } from './bit'
 import { bloop } from './bloop'
 import { miso } from './miso'
+import { molf } from './molf'
 import { OVERLAP, RATIO, type Companion } from './companion'
 
-// The companions shipped with winotch, by id: `crate::companion::BUILT_IN`
+// The companions shipped with Minim Notch, by id: `crate::companion::BUILT_IN`
 // on the Rust side lists the same ids.
 export const companions: Record<string, Companion> = {
+  molf,
   bloop,
   bit,
   miso,

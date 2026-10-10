@@ -95,9 +95,9 @@ pub enum NotchSpeed {
 #[serde(rename_all = "camelCase")]
 pub enum ModuleLayout {
     /// All in the notch, a thin line between two modules.
-    #[default]
     Joined,
-    /// One card per module, the others under the notch.
+    /// One card per module, the others under the notch (the default).
+    #[default]
     Separate,
 }
 
@@ -127,7 +127,8 @@ impl Default for Config {
         Self {
             schema_version: SCHEMA_VERSION,
             sound_enabled: true,
-            cursor_resistance: true,
+            // Off until the user asks for it (2026-10-10).
+            cursor_resistance: false,
             cursor_resistance_strength: Strength::default(),
             hide_in_fullscreen: true,
             placement: Placement::default(),

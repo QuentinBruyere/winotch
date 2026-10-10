@@ -196,7 +196,7 @@ pub fn emit_status(app: &AppHandle) {
     let _ = app.emit("status-changed", status(&app.state::<AppState>()));
 }
 
-/// Starts winotch with the given modules (ADR-0009). `context` comes from
+/// Starts Minim Notch with the given modules (ADR-0009). `context` comes from
 /// `tauri::generate_context!()` in the calling binary: its tauri.conf.json
 /// decides the product, the front-end and the bundle.
 pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
@@ -348,5 +348,5 @@ pub fn run(context: tauri::Context, mut modules: Vec<Box<dyn Module>>) {
             }
         })
         .run(context)
-        .expect("error while running winotch");
+        .expect("error while running Minim Notch");
 }

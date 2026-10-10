@@ -279,6 +279,53 @@ html[data-window='settings'] {
     flex-direction: column;
     align-items: center;
     gap: 6px;
+    padding: 6px;
+    border-color: transparent;
+    background: none;
+  }
+
+  & .companion-tile.selected {
+    border-color: var(--accent);
+  }
+
+  & button.companion-preview {
+    padding: 0;
+    border: none;
+    cursor: pointer;
+  }
+
+  /* One companion's animations, in a panel that opens and closes. */
+  & .companion-animations summary {
+    cursor: pointer;
+    font-weight: 600;
+  }
+
+  & .companion-animations[open] summary {
+    margin-bottom: 12px;
+  }
+
+  /* The companion drawn three times bigger. */
+  & .companion-stage {
+    display: grid;
+    place-items: center;
+    height: 44px;
+    margin-bottom: 12px;
+    overflow: hidden;
+    border-radius: 4px;
+    background: var(--notch-bg);
+    zoom: 3;
+  }
+
+  & .animation-choices {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  & .animation-choices button.selected {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: var(--accent-text);
   }
 
   & .companion-preview {

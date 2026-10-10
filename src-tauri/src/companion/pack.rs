@@ -121,7 +121,7 @@ fn default_sheet() -> String {
 #[derive(Debug, Default, Clone, Copy, PartialEq, Deserialize)]
 #[serde(rename_all = "camelCase")]
 enum Colors {
-    /// Only the shape counts: winotch paints it (state, chosen color).
+    /// Only the shape counts: Minim Notch paints it (state, chosen color).
     #[default]
     Tint,
     /// The pack keeps its own colors.

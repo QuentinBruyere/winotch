@@ -1,4 +1,4 @@
-# winotch
+# Minim Notch
 
 A small always-on-top "notch" at the edge of your screen that shows what is going on, starting with the live activity of [Claude Code](https://claude.com/claude-code): working, waiting for a permission, waiting for your answer, done, error.
 
@@ -16,7 +16,7 @@ Windows first; macOS and Linux are planned.
 
 ## How it works
 
-winotch registers HTTP hooks in your Claude Code settings (`~/.claude/settings.json`), from the settings window. Claude Code then posts its events to a small server that winotch runs on `127.0.0.1`, protected by a per-install token. Nothing leaves your machine.
+Minim Notch registers HTTP hooks in your Claude Code settings (`~/.claude/settings.json`), from the settings window. Claude Code then posts its events to a small server that Minim Notch runs on `127.0.0.1`, protected by a per-install token. Nothing leaves your machine.
 
 ## Build from source
 

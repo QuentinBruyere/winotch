@@ -14,6 +14,7 @@
     pictures,
     played,
     RATIO,
+    type Animation,
   } from './companions/companion'
   import type { Mood } from './companions/mood.svelte'
   import { SIZES } from './companions'
@@ -31,7 +32,9 @@
   // `dimmed`: darker while working too, as at rest (a color too bright).
   // `mood`: plays that mood's animation instead of the tone's (DF-0024);
   // `tone` still decides the color. `replay`: a new value plays the same
-  // mood again from the start (each click petting it).
+  // mood again from the start (each click petting it). `animation`: plays
+  // exactly this one instead (the settings' preview, DF-0025), `tone` still
+  // deciding the color.
   let {
     item,
     id,
@@ -41,6 +44,7 @@
     tone,
     mood = null,
     replay = 0,
+    animation: chosen = null,
     compact = false,
   }: {
     item: string
@@ -51,6 +55,7 @@
     tone: Tone
     mood?: Mood | null
     replay?: number
+    animation?: Animation | null
     compact?: boolean
   } = $props()
 
@@ -91,7 +96,10 @@
   // Scenes in random order drawn when the state started (`played`).
   const animation = $derived(
     companion &&
-      played(mood ? moodAnimation(companion, mood) : companion.animations[tone], entered.at),
+      played(
+        chosen ?? (mood ? moodAnimation(companion, mood) : companion.animations[tone]),
+        entered.at,
+      ),
   )
   const drawn = $derived(animation ? pictures(animation) : { paths: [], order: [] })
   const count = $derived(drawn.order.length)

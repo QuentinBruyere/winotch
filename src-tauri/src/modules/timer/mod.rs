@@ -1,7 +1,7 @@
 //! Timer module: counts down from a chosen duration, set and controlled from
 //! its buttons in the open notch; rings when the time is up. Default and
 //! favourite durations come from its settings. Off by default; not kept when
-//! winotch quits.
+//! Minim Notch quits.
 
 mod countdown;
 

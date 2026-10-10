@@ -1,5 +1,5 @@
 //! Stopwatch module: counts up, started, paused and reset from its buttons
-//! in the open notch. Off by default; not kept when winotch quits.
+//! in the open notch. Off by default; not kept when Minim Notch quits.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};

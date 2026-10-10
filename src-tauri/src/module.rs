@@ -217,7 +217,7 @@ pub trait Module: Send + Sync + 'static {
         String::new()
     }
     /// The module's own translations (ADR-0012): (language, flat JSON) pairs,
-    /// keys prefixed with the module id. Added to winotch's at launch.
+    /// keys prefixed with the module id. Added to Minim Notch's at launch.
     fn locales(&self) -> &'static [(&'static str, &'static str)] {
         &[]
     }
@@ -227,7 +227,7 @@ pub trait Module: Send + Sync + 'static {
     }
     /// Called at launch when enabled, and when the user enables the module.
     fn start(&self, host: &Host);
-    /// Called when the user disables the module (not when winotch quits).
+    /// Called when the user disables the module (not when Minim Notch quits).
     fn stop(&self);
     /// What the notch shows for this module, in display order.
     fn items(&self) -> Vec<Item>;
@@ -305,7 +305,7 @@ impl Host {
         let _ = self.app.emit("notice", message);
     }
 
-    /// winotch's config dir, for files of the module's own.
+    /// Minim Notch's config dir, for files of the module's own.
     pub fn config_dir(&self) -> PathBuf {
         self.app.state::<AppState>().config_dir.clone()
     }

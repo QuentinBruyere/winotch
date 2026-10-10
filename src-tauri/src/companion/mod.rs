@@ -13,10 +13,10 @@ use serde::{Deserialize, Serialize};
 
 pub use library::load as load_custom;
 
-/// The companions shipped with winotch, in menu order. Each needs its
+/// The companions shipped with Minim Notch, in menu order. Each needs its
 /// drawing in src/lib/companions/ and a `companion.<id>` translation (its
 /// name).
-pub const BUILT_IN: &[&str] = &["bloop", "bit", "miso"];
+pub const BUILT_IN: &[&str] = &["molf", "bloop", "bit", "miso"];
 
 /// The colors a companion may be given instead of its state's, in menu
 /// order. The front holds their values (`--companion-<id>` in src/app.css,

@@ -129,6 +129,14 @@ impl Module for ClaudeCode {
         if settings.reconnect {
             let _ = inner.connect(true);
             inner.update_settings(|s| s.reconnect = false);
+        } else if let (Some(path), Some(token)) = (inner.hooks_path.get(), inner.token.get())
+            && hooks::has_legacy(path)
+        {
+            // Hooks installed when the app was still called winotch: moved
+            // to the current address, quietly.
+            if let Err(e) = hooks::install(path, settings.server_port, token) {
+                log::error!("cannot update the old hooks in {}: {e}", path.display());
+            }
         }
         if !inner.pruner_started.swap(true, Ordering::Relaxed) {
             spawn_pruner(Arc::clone(inner));
@@ -330,7 +338,7 @@ impl Inner {
         }
     }
 
-    /// Adds (`true`) or removes (`false`) winotch's hooks in the Claude Code settings.
+    /// Adds (`true`) or removes (`false`) Minim Notch's hooks in the Claude Code settings.
     fn connect(&self, connect: bool) -> Result<(), String> {
         let path = self
             .hooks_path
@@ -357,7 +365,7 @@ impl Inner {
         result.map_err(|e| e.to_string())
     }
 
-    /// Moves the hook server to another port without restarting winotch: the
+    /// Moves the hook server to another port without restarting Minim Notch: the
     /// new port is opened first, so a busy port leaves everything as it was.
     fn set_port(self: &Arc<Self>, port: u16) -> Result<(), String> {
         if port < 1024 {
@@ -518,7 +526,7 @@ mod tests {
 
     #[test]
     fn project_name_is_the_last_folder() {
-        assert_eq!(project_name(Some("C:\\work\\winotch\\")), "winotch");
+        assert_eq!(project_name(Some("C:\\work\\minim-notch\\")), "minim-notch");
         assert_eq!(project_name(Some("/home/me/app")), "app");
         assert_eq!(project_name(None), "session");
         assert_eq!(project_name(Some("/")), "session");

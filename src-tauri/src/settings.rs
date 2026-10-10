@@ -164,7 +164,7 @@ pub fn open(app: &AppHandle) -> tauri::Result<()> {
     open_window(app, true)
 }
 
-/// Opens the settings window without taking the focus: winotch opens it by
+/// Opens the settings window without taking the focus: Minim Notch opens it by
 /// itself (a crash to report, ADR-0014), the user is busy elsewhere.
 pub fn open_in_background(app: &AppHandle) -> tauri::Result<()> {
     open_window(app, false)
