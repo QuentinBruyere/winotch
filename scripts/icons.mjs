@@ -1,8 +1,10 @@
 // Makes the app icons from the pixel art logo (assets/logo.png, 16 × 16,
-// 8-bit RGBA): each size an exact multiple of it, enlarged without smoothing
-// so the pixels stay crisp. Run `pnpm tauri icon assets/icon.png` first for
-// the other formats (macOS, Windows Store), then this script: it replaces
-// the sizes Windows shows and the 1024 px source.
+// 8-bit RGBA): a charcoal square with well rounded smooth corners, and Molf's head
+// (the logo's light pixels) in the middle, enlarged by a whole factor
+// without smoothing so its pixels stay crisp. It writes the 1024 px source
+// (assets/icon.png) and the sizes Windows shows; `pnpm tauri icon
+// assets/icon.png` makes the other formats (macOS, Windows Store) from that
+// source, then run this script again: Tauri's resizing blurs the pixels.
 //
 //   node scripts/icons.mjs
 import { readFileSync, writeFileSync } from 'node:fs'
@@ -72,21 +74,15 @@ const chunk = (kind, data) => {
   return Buffer.concat([length, body, sum])
 }
 
-// The logo `factor` times bigger, as a PNG.
-function enlarged({ width, height, rows }, factor) {
-  const w = width * factor
-  const h = height * factor
-  const out = Buffer.alloc((w * 4 + 1) * h)
-  for (let y = 0; y < h; y++) {
-    const source = rows[Math.floor(y / factor)]
-    for (let x = 0; x < w; x++) {
-      const from = Math.floor(x / factor) * 4
-      source.copy(out, y * (w * 4 + 1) + 1 + x * 4, from, from + 4)
-    }
+// An RGBA picture of `size` × `size` pixels as a PNG.
+function encode(size, pixels) {
+  const out = Buffer.alloc((size * 4 + 1) * size)
+  for (let y = 0; y < size; y++) {
+    pixels.copy(out, y * (size * 4 + 1) + 1, y * size * 4, (y + 1) * size * 4)
   }
   const header = Buffer.alloc(13)
-  header.writeUInt32BE(w, 0)
-  header.writeUInt32BE(h, 4)
+  header.writeUInt32BE(size, 0)
+  header.writeUInt32BE(size, 4)
   header[8] = 8
   header[9] = 6
   return Buffer.concat([
@@ -95,6 +91,64 @@ function enlarged({ width, height, rows }, factor) {
     chunk('IDAT', deflateSync(out, { level: 9 })),
     chunk('IEND', Buffer.alloc(0)),
   ])
+}
+
+// The square's color, Molf's, the corners' radius (a share of the size) and
+// how much of the width Molf takes, about.
+const BACKGROUND = [0x26, 0x26, 0x26]
+const FOREGROUND = [0xf2, 0xf2, 0xf2]
+const RADIUS = 0.32
+const FILL = 0.62
+
+// Molf's head: the logo's light pixels, as "x,y" from the top left of their
+// box, and the box's size.
+function headOf({ rows }) {
+  const cells = []
+  rows.forEach((row, y) => {
+    for (let x = 0; x < 16; x++) {
+      if (row[x * 4 + 3] > 128 && row[x * 4] > 128) cells.push([x, y])
+    }
+  })
+  const left = Math.min(...cells.map(([x]) => x))
+  const top = Math.min(...cells.map(([, y]) => y))
+  return {
+    cells: new Set(cells.map(([x, y]) => `${x - left},${y - top}`)),
+    width: Math.max(...cells.map(([x]) => x)) - left + 1,
+    height: Math.max(...cells.map(([, y]) => y)) - top + 1,
+  }
+}
+
+// The icon at `size` px: the square's edge smoothed by 4 × 4 samples per
+// pixel, Molf drawn with whole pixels (each `cell` px), centered.
+function icon(head, size) {
+  const pixels = Buffer.alloc(size * size * 4)
+  const radius = size * RADIUS
+  const cell = Math.max(1, Math.round((size * FILL) / head.width))
+  const left = Math.round((size - head.width * cell) / 2)
+  const top = Math.round((size - head.height * cell) / 2)
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let inside = 0
+      for (let sy = 0; sy < 4; sy++) {
+        for (let sx = 0; sx < 4; sx++) {
+          const fx = x + (sx + 0.5) / 4
+          const fy = y + (sy + 0.5) / 4
+          const cx = Math.min(Math.max(fx, radius), size - radius)
+          const cy = Math.min(Math.max(fy, radius), size - radius)
+          if ((fx - cx) ** 2 + (fy - cy) ** 2 <= radius * radius) inside++
+        }
+      }
+      const molf =
+        x >= left && y >= top && head.cells.has(`${Math.floor((x - left) / cell)},${Math.floor((y - top) / cell)}`)
+      const color = molf ? FOREGROUND : BACKGROUND
+      const i = (y * size + x) * 4
+      pixels[i] = color[0]
+      pixels[i + 1] = color[1]
+      pixels[i + 2] = color[2]
+      pixels[i + 3] = Math.round((inside / 16) * 255)
+    }
+  }
+  return encode(size, pixels)
 }
 
 // A .ico of PNG entries (Windows Vista and later).
@@ -120,12 +174,13 @@ function ico(pngs) {
 
 const logo = decode(LOGO)
 if (logo.width !== 16 || logo.height !== 16) throw new Error(`${LOGO}: expected 16 × 16`)
-writeFileSync('assets/icon.png', enlarged(logo, 64))
-writeFileSync(`${ICONS}/icon.png`, enlarged(logo, 32))
-writeFileSync(`${ICONS}/32x32.png`, enlarged(logo, 2))
-writeFileSync(`${ICONS}/64x64.png`, enlarged(logo, 4))
-writeFileSync(`${ICONS}/128x128.png`, enlarged(logo, 8))
-writeFileSync(`${ICONS}/128x128@2x.png`, enlarged(logo, 16))
+const head = headOf(logo)
+writeFileSync('assets/icon.png', icon(head, 1024))
+writeFileSync(`${ICONS}/icon.png`, icon(head, 512))
+writeFileSync(`${ICONS}/32x32.png`, icon(head, 32))
+writeFileSync(`${ICONS}/64x64.png`, icon(head, 64))
+writeFileSync(`${ICONS}/128x128.png`, icon(head, 128))
+writeFileSync(`${ICONS}/128x128@2x.png`, icon(head, 256))
 // 16, 32, 48, 64 and 256 px: the sizes Windows picks from.
-writeFileSync(`${ICONS}/icon.ico`, ico([1, 2, 3, 4, 16].map((f) => enlarged(logo, f))))
+writeFileSync(`${ICONS}/icon.ico`, ico([16, 32, 48, 64, 256].map((size) => icon(head, size))))
 console.log('icons made from', LOGO)
