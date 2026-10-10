@@ -12,6 +12,7 @@
   import { applyAppearance, MAX_GRAIN, type Appearance } from '../lib/theme'
   import type { ModuleUis } from '../modules'
   import CustomCompanions from './CustomCompanions.svelte'
+  import Logo from './Logo.svelte'
   import './settings.css'
 
   let { moduleUis }: { moduleUis: ModuleUis } = $props()
@@ -385,8 +386,11 @@
 <div class="layout">
   <nav aria-label={t('settings.categories')}>
     <div class="brand">
-      Minim Notch
-      {#if version}<span class="version">v{version}</span>{/if}
+      <Logo />
+      <span class="name">
+        Minim Notch
+        {#if version}<span class="version">v{version}</span>{/if}
+      </span>
     </div>
     {#each pages as item (item.id)}
       <button

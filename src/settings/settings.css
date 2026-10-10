@@ -1,26 +1,36 @@
 /* Settings window, shared by its module sections (ADR-0009). Scoped to the
-   settings window: the notch window loads the same bundle. */
+   settings window: the notch window loads the same bundle. The website's
+   look: JetBrains Mono, black and white (the chosen thing inverted), square
+   corners, thin borders. */
+@import '@fontsource-variable/jetbrains-mono';
+
 html[data-window='settings'] {
-  --bg: #f4f4f6;
-  --card: #ffffff;
-  --text: #1c1c1e;
-  --muted: #6e6e73;
-  --border: #e2e2e7;
-  --accent: #0a84ff;
-  --accent-text: #ffffff;
+  --bg: #ececec;
+  --card: #f6f6f6;
+  --text: #141414;
+  --muted: #666666;
+  --border: rgb(0 0 0 / 0.16);
+  --hover: rgb(0 0 0 / 0.06);
+  /* The chosen thing: inverted. */
+  --accent: var(--text);
+  --accent-text: var(--bg);
   --danger: #d70015;
+  --success: #28a745;
   color-scheme: light;
   color: var(--text);
-  font-size: 13px;
+  font-family: 'JetBrains Mono Variable', ui-monospace, 'Cascadia Mono', Consolas, monospace;
+  font-size: 12.5px;
 
   /* `data-theme` comes from src/lib/theme.ts (DF-0014). */
   &[data-theme='dark'] {
-    --bg: #1c1c1e;
-    --card: #2c2c2e;
-    --text: #f2f2f7;
-    --muted: #98989f;
-    --border: #3a3a3c;
+    --bg: #181818;
+    --card: #1f1f1f;
+    --text: #f2f2f2;
+    --muted: #8f8f8f;
+    --border: rgb(255 255 255 / 0.14);
+    --hover: rgb(255 255 255 / 0.07);
     --danger: #ff6961;
+    --success: #30d158;
     color-scheme: dark;
   }
 
@@ -44,13 +54,32 @@ html[data-window='settings'] {
     background: var(--card);
   }
 
+  /* Molf and the name, as on the website. */
   & .brand {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-    padding: 0 10px 14px;
-    font-size: 16px;
-    font-weight: 600;
+    display: grid;
+    justify-items: start;
+    gap: 8px;
+    padding: 2px 10px 18px;
+    font-size: 15px;
+    font-weight: 500;
+  }
+
+  /* The name on one line, the version under it. */
+  & .brand .name {
+    display: grid;
+    gap: 2px;
+    white-space: nowrap;
+  }
+
+  & .brand .version {
+    margin: 0;
+    font-size: 11px;
+    font-weight: 400;
+  }
+
+  & .brand .logo {
+    width: 36px;
+    color: var(--text);
   }
 
   & .nav-item {
@@ -58,6 +87,7 @@ html[data-window='settings'] {
     background: transparent;
     text-align: left;
     padding: 7px 10px;
+    border-radius: 0;
   }
 
   /* "À propos" sits at the bottom of the menu. */
@@ -66,13 +96,14 @@ html[data-window='settings'] {
   }
 
   & .nav-item:hover {
-    background: var(--bg);
+    background: var(--hover);
   }
 
-  & .nav-item.current {
+  & .nav-item.current,
+  & .nav-item.current:hover {
     background: var(--accent);
     color: var(--accent-text);
-    font-weight: 600;
+    font-weight: 500;
   }
 
   & main {
@@ -85,23 +116,30 @@ html[data-window='settings'] {
     gap: 14px;
   }
 
+  /* One centered column, however wide the window. */
   & main > * {
+    justify-self: center;
     width: 100%;
     max-width: 600px;
     box-sizing: border-box;
   }
 
-  & .back {
-    justify-self: start;
-    width: auto;
+  /* At the column's left edge, like the rest. */
+  & .back,
+  & .back:hover:not(:disabled) {
     border: none;
     background: transparent;
     padding: 0;
-    color: var(--accent);
+    text-align: left;
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 4px;
   }
 
+  /* Buttons wrap: the monospace font makes them wider. */
   & .actions {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 10px;
   }
@@ -151,9 +189,9 @@ html[data-window='settings'] {
     flex-shrink: 0;
     width: 38px;
     height: 38px;
-    border-radius: 9px;
+    border: 1px solid var(--border);
     background: var(--bg);
-    color: var(--accent);
+    color: var(--text);
   }
 
   & .module-card.disabled .module-icon {
@@ -187,14 +225,15 @@ html[data-window='settings'] {
 
   & h1 {
     margin: 0;
-    font-size: 20px;
+    font-size: 24px;
+    font-weight: 500;
   }
 
   & h2 {
     margin: 0 0 10px;
     font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
+    font-weight: 500;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--muted);
   }
@@ -202,7 +241,6 @@ html[data-window='settings'] {
   & section {
     background: var(--card);
     border: 1px solid var(--border);
-    border-radius: 10px;
     padding: 14px 16px;
   }
 
@@ -214,6 +252,7 @@ html[data-window='settings'] {
   }
 
   & .row + .row,
+  & .stack + .row,
   & .separated {
     margin-top: 14px;
     padding-top: 14px;
@@ -252,7 +291,7 @@ html[data-window='settings'] {
   }
 
   & .status.on {
-    background: #30d158;
+    background: var(--success);
   }
 
   & .error {
@@ -311,7 +350,6 @@ html[data-window='settings'] {
     height: 44px;
     margin-bottom: 12px;
     overflow: hidden;
-    border-radius: 4px;
     background: var(--notch-bg);
     zoom: 3;
   }
@@ -335,7 +373,6 @@ html[data-window='settings'] {
     width: 64px;
     height: 44px;
     overflow: hidden;
-    border-radius: 8px;
     background: var(--notch-bg);
   }
 
@@ -354,12 +391,16 @@ html[data-window='settings'] {
   & button {
     font: inherit;
     padding: 6px 12px;
-    border-radius: 6px;
+    border-radius: 0;
     border: 1px solid var(--border);
-    background: var(--card);
+    background: transparent;
     color: var(--text);
     cursor: pointer;
     white-space: nowrap;
+  }
+
+  & button:hover:not(:disabled) {
+    background: var(--hover);
   }
 
   & button:disabled {
@@ -367,7 +408,8 @@ html[data-window='settings'] {
     cursor: default;
   }
 
-  & button.primary {
+  & button.primary,
+  & button.primary:hover:not(:disabled) {
     background: var(--accent);
     border-color: var(--accent);
     color: var(--accent-text);
@@ -376,9 +418,6 @@ html[data-window='settings'] {
   & .segmented {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    padding: 2px;
-    border-radius: 8px;
-    background: var(--bg);
     border: 1px solid var(--border);
   }
 
@@ -388,10 +427,10 @@ html[data-window='settings'] {
     padding: 6px 4px;
   }
 
-  & .segmented button.selected {
-    background: var(--card);
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.15);
-    font-weight: 600;
+  & .segmented button.selected,
+  & .segmented button.selected:hover:not(:disabled) {
+    background: var(--accent);
+    color: var(--accent-text);
   }
 
   & .field {
@@ -403,7 +442,7 @@ html[data-window='settings'] {
     font: inherit;
     max-width: 240px;
     padding: 5px 8px;
-    border-radius: 6px;
+    border-radius: 0;
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--text);
@@ -439,7 +478,7 @@ html[data-window='settings'] {
     width: 26px;
     height: 26px;
     padding: 0;
-    border-radius: 50%;
+    border-radius: 0;
     border: 1px solid var(--border);
     cursor: pointer;
   }
@@ -452,7 +491,6 @@ html[data-window='settings'] {
   & .swatch.default {
     width: auto;
     padding: 0 10px;
-    border-radius: 13px;
     background: var(--card);
     color: var(--text);
     font-size: 12px;
@@ -505,11 +543,16 @@ html[data-window='settings'] {
     font-weight: 600;
   }
 
+  & .stops button:hover:not(:disabled) {
+    background: transparent;
+    color: var(--text);
+  }
+
   & input[type='text'] {
     font: inherit;
     width: 120px;
     padding: 5px 8px;
-    border-radius: 6px;
+    border-radius: 0;
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--text);
@@ -519,40 +562,49 @@ html[data-window='settings'] {
     font: inherit;
     width: 76px;
     padding: 5px 8px;
-    border-radius: 6px;
+    border-radius: 0;
     border: 1px solid var(--border);
     background: var(--bg);
     color: var(--text);
   }
 
+  /* Square switches: a hollow box, filled and inverted when on. */
   & .switch {
     appearance: none;
     flex-shrink: 0;
     width: 38px;
     height: 22px;
     margin: 0;
-    border-radius: 11px;
-    background: var(--border);
+    border: 1px solid var(--border);
+    border-radius: 0;
+    background: transparent;
     position: relative;
     cursor: pointer;
-    transition: background-color 150ms ease;
+    transition:
+      background-color 150ms ease,
+      border-color 150ms ease;
   }
 
   & .switch::after {
     content: '';
     position: absolute;
-    top: 2px;
-    left: 2px;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: #fff;
-    box-shadow: 0 1px 2px rgb(0 0 0 / 0.3);
-    transition: transform 150ms ease;
+    top: 3px;
+    left: 3px;
+    width: 14px;
+    height: 14px;
+    background: var(--muted);
+    transition:
+      transform 150ms ease,
+      background-color 150ms ease;
   }
 
   & .switch:checked {
-    background: #30d158;
+    background: var(--accent);
+    border-color: var(--accent);
+  }
+
+  & .switch:checked::after {
+    background: var(--accent-text);
   }
 
   & .switch:checked::after {
@@ -563,7 +615,7 @@ html[data-window='settings'] {
   & button:focus-visible,
   & input:focus-visible,
   & select:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--text);
     outline-offset: 2px;
   }
 }
