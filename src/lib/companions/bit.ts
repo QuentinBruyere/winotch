@@ -11,8 +11,8 @@ import {
 
 // Bit (DF-0020): a little robot, 24 × 16 pixels, standing in the middle. A
 // head with a screen for a face (its eyes light up in the screen), an
-// antenna with a bulb, two feet; arms only while working, and one raised
-// for a question. Each picture is put together from the parts below;
+// antenna with a bulb, two feet; arms only while working, and one
+// scratching its head for a question. Each picture is put together from the parts below;
 // `pose` draws the robot 2 pixels lower than they say, under the symbols
 // above its head.
 //
@@ -28,8 +28,8 @@ import {
 // |           |                             | antenna, ★ loading bar on the screen,       |
 // |           |                             | ★ walks side to side, ★ scans with its eyes |
 // | attention | -                           | blinking "!", shakes                        |
-// | question  | -                           | raises an arm under a "?", looks up, left,  |
-// |           |                             | right                                       |
+// | question  | -                           | scratches its head under a "?", looks up,   |
+// |           |                             | left, right                                 |
 // | success   | ★ check mark on the screen  | still, ★ happy eyes, bulb on                |
 // | error     | ★ reboots: snow, black      | crossed eyes, ★ a spark now and then        |
 //
@@ -78,22 +78,26 @@ const EYES = {
 }
 type Eyes = keyof typeof EYES
 
-// Arms: only while working, and one raised for a question; none otherwise.
+// Arms: only while working, and one scratching the head for a question;
+// none otherwise.
 const ARMS: Record<string, Layer[]> = {
   none: [],
-  // The right one raised, as to ask.
-  raise: [layer(['.#', '.#', '#.'], 18, 4)],
+  // The right one up over the head, scratching it: the hand on its corner,
+  // then rubbing further along the top.
+  scratch: [layer(['###.', '...#', '...#', '..#.'], 16, 3)],
+  scratchUp: [layer(['####.', '....#', '....#', '...#.'], 15, 3)],
   up: [layer(['#.', '.#'], 4, 6), layer(['.#', '#.'], 18, 6)],
   out: [layer(['##'], 4, 8), layer(['##'], 18, 8)],
   // Typing: one arm forward, then the other.
   leftOut: [layer(['##'], 4, 8), layer(['#.', '.#'], 18, 8)],
   rightOut: [layer(['.#', '#.'], 4, 8), layer(['##'], 18, 8)],
 }
-type Arms = 'none' | 'raise' | 'up' | 'out' | 'leftOut' | 'rightOut'
+type Arms = 'none' | 'scratch' | 'scratchUp' | 'up' | 'out' | 'leftOut' | 'rightOut'
 
 // Above the head, drawn where they are (the robot stands 2 pixels lower).
 const BANG = layer(['##', '##', '..', '##'], 17, 0)
-const QUESTION = layer(['###', '..#', '.##', '...', '.#.'], 16, 0)
+// The question mark to the right, clear of the hand scratching the head.
+const QUESTION = layer(['###', '..#', '.##', '...', '.#.'], 19, 0)
 const ZZ = ['###', '.#.', '###']
 const SPARK = layer(['.#.', '#.#', '.#.'], 14, 0)
 // Radio waves on each side of the bulb (rows 3 and 4 once lowered).
@@ -226,9 +230,13 @@ const scan = [
 // The bulb on, under a "!" or not.
 const calling = (bang: boolean) => pose({ bulb: 'on', extra: bang ? [BANG] : [] })
 const shaking = (dx: number) => pose({ dx, bulb: 'on' })
-// An arm raised, under a question mark.
-const wondering = (look: [number, number], eyes: Eyes = 'open') =>
-  pose({ look, eyes, arms: 'raise', bulb: 'on', extra: [QUESTION] })
+// Scratching its head under a question mark (`up`: the hand further
+// along, between two scratches).
+const wondering = (look: [number, number], eyes: Eyes = 'open', up = false) =>
+  pose({ look, eyes, arms: up ? 'scratchUp' : 'scratch', bulb: 'on', extra: [QUESTION] })
+// `count` pictures of wondering, the hand going to and fro every two.
+const scratching = (look: [number, number], count: number) =>
+  Array.from({ length: count }, (_, i) => wondering(look, 'open', Math.floor(i / 2) % 2 === 1))
 
 // --- Done and failed ---
 
@@ -331,15 +339,15 @@ export const bit: Companion = {
         ...hold(pose({ bulb: 'on' }), 4),
       ],
     },
-    // Waiting for an answer: raises an arm under a "?", looks up, left,
-    // right.
+    // Waiting for an answer: scratches its head under a "?", looks up,
+    // left, right.
     question: {
       fps: 8,
       frames: [
-        ...hold(wondering([0, -1]), 8),
-        ...hold(wondering([-1, 0]), 6),
-        ...hold(wondering([1, 0]), 6),
-        ...hold(wondering([0, 0]), 6),
+        ...scratching([0, -1], 8),
+        ...scratching([-1, 0], 6),
+        ...scratching([1, 0], 6),
+        ...scratching([0, 0], 6),
         ...(['half', 'closed', 'half'] as const).map((eyes) => wondering([0, 0], eyes)),
         ...hold(wondering([0, 0]), 4),
       ],

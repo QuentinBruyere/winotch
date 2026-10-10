@@ -11,7 +11,8 @@ import {
 } from './companion'
 
 // Bloop (DF-0020): a little round drop with two eyes, 24 × 16 pixels, standing
-// in the middle; arms only while working, and one raised for a question.
+// in the middle; arms only while working, and one scratching its head for a
+// question.
 // Each picture is put together from the parts below.
 //
 // What it does, by state (★ = Bloop's own, the others shared with every
@@ -26,7 +27,7 @@ import {
 // |           |                   | ★ rolls side to side (eyes going round),              |
 // |           |                   | ★ wobbles like jelly, ★ bounces a ball on its head    |
 // | attention | -                 | mouth open under a blinking "!", shakes               |
-// | question  | -                 | raises an arm under a "?", looks up, left, right      |
+// | question  | -                 | scratches its head under a "?", looks up, left, right |
 // | success   | ★ confetti falls  | still (no smile: the color says it)                   |
 // | error     | ★ falls flat      | flat, crossed eyes, dazed now and then                |
 //
@@ -97,18 +98,21 @@ const EYES = {
 }
 type Eyes = keyof typeof EYES
 
-// Arms: only while working, and one raised for a question; none otherwise.
+// Arms: only while working, and one scratching the head for a question;
+// none otherwise.
 const ARMS: Record<string, Layer[]> = {
   none: [],
-  // The right one raised, as to ask.
-  raise: [layer(['.#', '.#', '#.'], 17, 6)],
+  // The right one up over the head, scratching it: the hand on the head,
+  // then lifted a pixel.
+  scratch: [layer(['###.', '...#', '...#', '...#', '..#.'], 15, 4)],
+  scratchUp: [layer(['#...', '.##.', '...#', '...#', '...#', '..#.'], 15, 3)],
   up: [layer(['#.', '.#'], 5, 7), layer(['.#', '#.'], 17, 7)],
   out: [layer(['##'], 5, 9), layer(['##'], 17, 9)],
   // Typing: one arm forward, then the other.
   leftOut: [layer(['##'], 5, 9), layer(['#.', '.#'], 17, 10)],
   rightOut: [layer(['.#', '#.'], 5, 10), layer(['##'], 17, 9)],
 }
-type Arms = 'none' | 'raise' | 'up' | 'out' | 'leftOut' | 'rightOut'
+type Arms = 'none' | 'scratch' | 'scratchUp' | 'up' | 'out' | 'leftOut' | 'rightOut'
 
 const OPEN_MOUTH = layer(['oo', 'oo'], 11, 11)
 
@@ -257,9 +261,13 @@ const ball = [
 const calling = (bang: boolean) => pose({ mouth: true, extra: bang ? [BANG] : [] })
 const shaking = (dx: number) => pose({ dx, mouth: true })
 
-// Lowered by one pixel, so the question mark fits above; an arm raised.
-const wondering = (look: [number, number], eyes: Eyes = 'open') =>
-  pose({ dy: 1, look, eyes, arms: 'raise', extra: [QUESTION] })
+// Lowered by one pixel, so the question mark fits above; scratching its
+// head (`up`: the hand lifted, between two scratches).
+const wondering = (look: [number, number], eyes: Eyes = 'open', up = false) =>
+  pose({ dy: 1, look, eyes, arms: up ? 'scratchUp' : 'scratch', extra: [QUESTION] })
+// `count` pictures of wondering, the hand going up and down every two.
+const scratching = (look: [number, number], count: number) =>
+  Array.from({ length: count }, (_, i) => wondering(look, 'open', Math.floor(i / 2) % 2 === 1))
 
 // --- Done and failed ---
 
@@ -345,15 +353,15 @@ export const bloop: Companion = {
         ...hold(pose({ mouth: true }), 4),
       ],
     },
-    // Waiting for an answer: raises an arm under a "?", looks up, left,
-    // right.
+    // Waiting for an answer: scratches its head under a "?", looks up,
+    // left, right.
     question: {
       fps: 8,
       frames: [
-        ...hold(wondering([0, -1]), 8),
-        ...hold(wondering([-1, 0]), 6),
-        ...hold(wondering([1, 0]), 6),
-        ...hold(wondering([0, 0]), 6),
+        ...scratching([0, -1], 8),
+        ...scratching([-1, 0], 6),
+        ...scratching([1, 0], 6),
+        ...scratching([0, 0], 6),
         ...(['half', 'closed', 'half'] as const).map((eyes) => wondering([0, 0], eyes)),
         ...hold(wondering([0, 0]), 4),
       ],

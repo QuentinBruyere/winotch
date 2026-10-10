@@ -10,8 +10,8 @@ import {
 } from './companion'
 
 // Miso (DF-0020): a little cat sitting face on, 24 × 16 pixels, in the
-// middle; its tail on its right. A paw raised for a question; otherwise its
-// paws stay down, except while working. Each picture is put together from
+// middle; its tail on its right. A paw scratching behind its ear for a
+// question; otherwise its paws stay down, except while working. Each picture is put together from
 // the parts below.
 //
 // What it does, by state (★ = Miso's own, the others shared with every
@@ -26,8 +26,8 @@ import {
 // |           |                         | ball of yarn, ★ ears twitch while it watches  |
 // | attention | -                       | ears up, ★ tail puffed, under a blinking "!", |
 // |           |                         | shakes                                        |
-// | question  | -                       | raises a paw under a "?", looks up, left,     |
-// |           |                         | right                                         |
+// | question  | -                       | scratches behind its ear under a "?", looks   |
+// |           |                         | up, left, right                               |
 // | success   | ★ two hearts float up   | still, ★ content squint                       |
 // | error     | ★ fur bristles, hisses  | ★ ears flat, grumpy squint, tail flicks       |
 //
@@ -114,16 +114,17 @@ type Tail = keyof typeof TAIL
 // Paws: none raised by default.
 const PAWS: Record<string, Layer[]> = {
   none: [],
-  // The right one raised, as to ask: up beside the head, gone from the
-  // ground.
-  raise: [layer(['.#', '.#', '#.'], 17, 5), layer(['ooo'], 13, 13)],
+  // The right one up, scratching behind the ear, gone from the ground:
+  // just beside the ear, then lifted a pixel.
+  scratch: [layer(['#.', '.#', '.#', '#.'], 17, 4), layer(['ooo'], 13, 13)],
+  scratchUp: [layer(['#.', '#.', '.#', '.#', '#.'], 17, 3), layer(['ooo'], 13, 13)],
   // Licking: the left paw up at its mouth, gone from the ground.
   lick: [layer(['##', '.#'], 5, 9), layer(['ooo'], 8, 13)],
   // Tapping a keyboard: one paw down, then the other.
   leftDown: [layer(['##'], 9, 14)],
   rightDown: [layer(['##'], 13, 14)],
 }
-type Paws = 'none' | 'raise' | 'lick' | 'leftDown' | 'rightDown'
+type Paws = 'none' | 'scratch' | 'scratchUp' | 'lick' | 'leftDown' | 'rightDown'
 
 const OPEN_MOUTH = layer(['oo'], 11, 9)
 
@@ -249,9 +250,13 @@ const calling = (bang: boolean) =>
   pose({ tail: 'puffed', mouth: true, extra: bang ? [BANG] : [] })
 const shaking = (dx: number) => pose({ dx, tail: 'puffed', mouth: true })
 
-// A paw raised, under a question mark.
-const wondering = (look: [number, number], eyes: Eyes = 'open') =>
-  pose({ look, eyes, paws: 'raise', extra: [QUESTION] })
+// Scratching behind its ear under a question mark (`up`: the paw lifted,
+// between two scratches).
+const wondering = (look: [number, number], eyes: Eyes = 'open', up = false) =>
+  pose({ look, eyes, paws: up ? 'scratchUp' : 'scratch', extra: [QUESTION] })
+// `count` pictures of wondering, the paw going up and down every two.
+const scratching = (look: [number, number], count: number) =>
+  Array.from({ length: count }, (_, i) => wondering(look, 'open', Math.floor(i / 2) % 2 === 1))
 
 // --- Done and failed ---
 
@@ -343,14 +348,15 @@ export const miso: Companion = {
         ...hold(pose({ tail: 'puffed' }), 4),
       ],
     },
-    // Waiting for an answer: raises a paw under a "?", looks up, left, right.
+    // Waiting for an answer: scratches behind its ear under a "?", looks
+    // up, left, right.
     question: {
       fps: 8,
       frames: [
-        ...hold(wondering([0, -1]), 8),
-        ...hold(wondering([-1, 0]), 6),
-        ...hold(wondering([1, 0]), 6),
-        ...hold(wondering([0, 0]), 6),
+        ...scratching([0, -1], 8),
+        ...scratching([-1, 0], 6),
+        ...scratching([1, 0], 6),
+        ...scratching([0, 0], 6),
         ...(['half', 'closed', 'half'] as const).map((eyes) => wondering([0, 0], eyes)),
         ...hold(wondering([0, 0]), 4),
       ],
