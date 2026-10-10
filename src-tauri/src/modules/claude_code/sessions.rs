@@ -24,6 +24,10 @@ pub struct HookEvent {
     pub hook_event_name: String,
     #[serde(default)]
     pub cwd: Option<String>,
+    /// The session's transcript, in a folder named after the folder the
+    /// session was started in: it never moves.
+    #[serde(default)]
+    pub transcript_path: Option<String>,
     #[serde(default)]
     pub tool_name: Option<String>,
     #[serde(default)]
@@ -34,7 +38,8 @@ pub struct HookEvent {
 #[serde(rename_all = "camelCase")]
 pub struct Session {
     pub id: String,
-    /// The project folder: the first one Claude Code reported.
+    /// The project folder: the one the session was started in (see
+    /// `project_folder`).
     pub cwd: Option<String>,
     pub state: SessionState,
     pub tool: Option<String>,
@@ -68,6 +73,36 @@ fn transition(event: &HookEvent) -> Transition {
         "StopFailure" => Transition::Set(Error),
         "SessionEnd" => Transition::Remove,
         _ => Transition::Ignore,
+    }
+}
+
+/// The folder a session was started in. Claude Code keeps its transcript in
+/// `~/.claude/projects/<that folder, every character but letters and digits
+/// turned into ->/`: the folder is `cwd` or the parent of it whose name
+/// spelled that way matches. Without a match, `cwd` itself.
+pub fn project_folder(cwd: &str, transcript_path: Option<&str>) -> String {
+    let spelled = |path: &str| -> String {
+        path.chars()
+            .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+            .collect()
+    };
+    const SEPARATORS: [char; 2] = ['/', '\\'];
+    let Some(project) = transcript_path.and_then(|t| {
+        let mut parts = t.rsplit(SEPARATORS);
+        parts.next()?;
+        parts.next()
+    }) else {
+        return cwd.to_owned();
+    };
+    let mut candidate = cwd.trim_end_matches(SEPARATORS);
+    loop {
+        if spelled(candidate) == project {
+            return candidate.to_owned();
+        }
+        match candidate.rfind(SEPARATORS) {
+            Some(i) if i > 0 => candidate = &candidate[..i],
+            _ => return cwd.to_owned(),
+        }
     }
 }
 
@@ -108,11 +143,16 @@ impl SessionStore {
                 let before = (session.state, session.tool.clone(), session.cwd.clone());
                 session.state = state;
                 session.tool = tool;
-                // The project: the first folder known. Claude Code reports the
-                // current folder, which moves when a command changes it, and the
-                // project (its name, its companion) must not follow.
+                // The project: the folder the session was started in. Claude
+                // Code reports the current folder, which moves when a command
+                // changes it, and the project (its name, its companion, its
+                // color) must not follow, even when Minim Notch starts while
+                // the session is in a subfolder.
                 if session.cwd.is_none() {
-                    session.cwd = event.cwd.clone();
+                    session.cwd = event
+                        .cwd
+                        .as_deref()
+                        .map(|cwd| project_folder(cwd, event.transcript_path.as_deref()));
                 }
                 session.last_seen = now;
                 created || before != (session.state, session.tool.clone(), session.cwd.clone())
@@ -179,9 +219,47 @@ mod tests {
             session_id: "s1".into(),
             hook_event_name: name.into(),
             cwd: Some("/work/project".into()),
+            transcript_path: None,
             tool_name: None,
             notification_type: None,
         }
+    }
+
+    #[test]
+    fn the_project_is_the_folder_the_session_started_in() {
+        let transcript = r"C:\Users\jane\.claude\projects\D--code-my-app\1234.jsonl";
+        // Minim Notch started while the session was in a subfolder.
+        assert_eq!(
+            project_folder(r"D:\code\my-app\core\src-tauri", Some(transcript)),
+            r"D:\code\my-app"
+        );
+        assert_eq!(
+            project_folder(r"D:\code\my-app", Some(transcript)),
+            r"D:\code\my-app"
+        );
+        assert_eq!(
+            project_folder(
+                "/home/jane/my_app/src",
+                Some("/home/jane/.claude/projects/-home-jane-my-app/1.jsonl")
+            ),
+            "/home/jane/my_app"
+        );
+        // Outside the project, or no transcript: the folder as reported.
+        assert_eq!(project_folder(r"D:\other", Some(transcript)), r"D:\other");
+        assert_eq!(
+            project_folder(r"D:\code\my-app\core", None),
+            r"D:\code\my-app\core"
+        );
+    }
+
+    #[test]
+    fn a_session_seen_first_in_a_subfolder_keeps_its_project() {
+        let mut store = SessionStore::default();
+        let mut moved = event("UserPromptSubmit");
+        moved.cwd = Some("/work/project/src".into());
+        moved.transcript_path = Some("/home/me/.claude/projects/-work-project/s1.jsonl".into());
+        store.apply(&moved, Instant::now());
+        assert_eq!(store.list()[0].cwd.as_deref(), Some("/work/project"));
     }
 
     fn state(store: &SessionStore) -> SessionState {
